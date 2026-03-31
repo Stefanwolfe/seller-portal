@@ -339,47 +339,36 @@ export default function AdminPropertyDetail() {
         {/* ─── Photos Tab ─────────────────────────────────────────────────── */}
         {tab === 'photos' && (
           <>
-            <div
-              className={`upload-zone ${uploading ? 'upload-zone--active' : ''}`}
-              onClick={() => fileInputRef.current?.click()}
-              onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('upload-zone--active') }}
-              onDragLeave={e => e.currentTarget.classList.remove('upload-zone--active')}
-              onDrop={e => {
-                e.preventDefault()
-                e.currentTarget.classList.remove('upload-zone--active')
-                const files = Array.from(e.dataTransfer.files)
-                if (files.length) {
-                  setUploading(true)
-                  api.uploadPhotos(id, files).then(() => loadData()).catch(err => alert(err.message)).finally(() => setUploading(false))
-                }
-              }}
-              style={{ marginBottom: '1.5rem' }}
-            >
-              <Upload size={24} style={{ marginBottom: 8 }} />
-              <div>{uploading ? 'Uploading...' : 'Drop photos here or click to upload'}</div>
-              <div style={{ fontSize: '0.8rem', marginTop: 4 }}>Supports JPG, PNG, WebP</div>
-            </div>
-            <input ref={fileInputRef} type="file" multiple accept="image/*" style={{ display: 'none' }} onChange={handlePhotoUpload} />
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '0.75rem' }}>
-              {property.photos?.map(photo => (
-                <div key={photo.id} style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', aspectRatio: '4/3' }}>
-                  <img src={photo.url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  {photo.is_hero && (
-                    <div style={{ position: 'absolute', top: 8, left: 8, background: 'var(--admin-gold)', color: '#1A1A1A', padding: '2px 8px', borderRadius: 4, fontSize: '0.7rem', fontWeight: 600 }}>HERO</div>
-                  )}
-                  <button
-                    onClick={() => handleDeletePhoto(photo.id)}
-                    style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', borderRadius: 6, padding: 6, cursor: 'pointer' }}
-                  >
-                    <Trash2 size={14} />
-                  </button>
+            <div className="admin-card" style={{ marginBottom: '1.5rem' }}>
+              <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem', marginBottom: '1rem' }}>Photo Gallery Link</h3>
+              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
+                <div className="form-group" style={{ flex: 1, margin: 0 }}>
+                  <label className="form-label">Gallery URL (Autofocus, etc.)</label>
+                  <input className="form-input" value={property.gallery_url || ''} onChange={e => setProperty({...property, gallery_url: e.target.value})} placeholder="https://autofocus.io/galleries/..." />
                 </div>
-              ))}
+                <button className="btn btn--primary" onClick={async () => { await api.updateProperty(id, { gallery_url: property.gallery_url || '' }); loadData(); }}>Save</button>
+              </div>
+              {property.gallery_url && (<div style={{ marginTop: '0.75rem', fontSize: '0.85rem' }}><a href={property.gallery_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--admin-gold)' }}>View gallery \u2192</a></div>)}
             </div>
-            {(!property.photos || property.photos.length === 0) && (
-              <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--admin-text-muted)' }}>No photos uploaded yet</div>
-            )}
+            <div className="admin-card">
+              <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem', marginBottom: '1rem' }}>Hero Photo</h3>
+              <div style={{ fontSize: '0.85rem', color: 'var(--admin-text-muted)', marginBottom: '1rem' }}>Upload one featured photo for the property card and client dashboard header.</div>
+              {property.photos?.length > 0 ? (
+                <div style={{ position: 'relative', borderRadius: 8, overflow: 'hidden', maxWidth: 400, aspectRatio: '4/3' }}>
+                  <img src={property.photos[0].url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                  <button onClick={() => handleDeletePhoto(property.photos[0].id)} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(0,0,0,0.6)', border: 'none', color: 'white', borderRadius: 6, padding: 6, cursor: 'pointer' }}><Trash2 size={14} /></button>
+                  <div style={{ position: 'absolute', top: 8, left: 8, background: 'var(--admin-gold)', color: '#1A1A1A', padding: '2px 8px', borderRadius: 4, fontSize: '0.7rem', fontWeight: 600 }}>HERO</div>
+                </div>
+              ) : (
+                <>
+                  <div className={`upload-zone ${uploading ? 'upload-zone--active' : ''}`} onClick={() => fileInputRef.current?.click()} onDragOver={e => { e.preventDefault(); e.currentTarget.classList.add('upload-zone--active') }} onDragLeave={e => e.currentTarget.classList.remove('upload-zone--active')} onDrop={e => { e.preventDefault(); e.currentTarget.classList.remove('upload-zone--active'); const files = Array.from(e.dataTransfer.files).slice(0,1); if(files.length){ setUploading(true); api.uploadPhotos(id, files).then(() => loadData()).catch(err => alert(err.message)).finally(() => setUploading(false)); } }}>
+                    <Upload size={24} style={{ marginBottom: 8 }} />
+                    <div>{uploading ? 'Uploading...' : 'Drop hero photo here or click to upload'}</div>
+                  </div>
+                  <input ref={fileInputRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => { const files = Array.from(e.target.files).slice(0,1); if(files.length){ setUploading(true); api.uploadPhotos(id, files).then(() => loadData()).catch(err => alert(err.message)).finally(() => setUploading(false)); } }} />
+                </>
+              )}
+            </div>
           </>
         )}
 

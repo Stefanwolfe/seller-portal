@@ -84,6 +84,7 @@ class Property(Base):
     sqft = Column(Integer)
     description = Column(Text)
     hero_photo_url = Column(String(500))
+    gallery_url = Column(String(500))
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # Relationships
@@ -224,6 +225,7 @@ class PropertyCreate(BaseModel):
     bathrooms: Optional[float] = None
     sqft: Optional[int] = None
     description: Optional[str] = None
+    gallery_url: Optional[str] = None
 
 class PropertyUpdate(BaseModel):
     address: Optional[str] = None
@@ -239,6 +241,7 @@ class PropertyUpdate(BaseModel):
     bathrooms: Optional[float] = None
     sqft: Optional[int] = None
     description: Optional[str] = None
+    gallery_url: Optional[str] = None
 
 class ActivityCreate(BaseModel):
     property_id: int
@@ -272,6 +275,14 @@ class ClientPropertyAccess(BaseModel):
 async def lifespan(app: FastAPI):
     # Create tables
     Base.metadata.create_all(bind=engine)
+    # Migrate: add gallery_url column if missing
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE properties ADD COLUMN gallery_url VARCHAR(500)"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
     # Create upload directory
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(os.path.join(settings.upload_dir, "photos"), exist_ok=True)
@@ -449,6 +460,7 @@ async def list_properties(
             "sqft": p.sqft,
             "description": p.description,
             "hero_photo_url": p.hero_photo_url,
+            "gallery_url": p.gallery_url,
             "total_showings": total_showings,
             "total_open_house": total_open_house,
             "pending_approval": pending_approval,
@@ -501,6 +513,7 @@ async def get_property(property_id: int, current_user: User = Depends(get_curren
         "sqft": prop.sqft,
         "description": prop.description,
         "hero_photo_url": prop.hero_photo_url,
+        "gallery_url": prop.gallery_url,
         "days_on_market": days_on_market,
         "photos": photos
     }
@@ -952,6 +965,7 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
             "mls_number": prop.mls_number,
             "days_on_market": days_on_market,
             "hero_photo_url": prop.hero_photo_url,
+            "gallery_url": prop.gallery_url,
             "bedrooms": prop.bedrooms,
             "bathrooms": prop.bathrooms,
             "sqft": prop.sqft,

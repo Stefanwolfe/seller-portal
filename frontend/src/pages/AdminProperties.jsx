@@ -9,7 +9,7 @@ export default function AdminProperties() {
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [showModal, setShowModal] = useState(false)
-  const [form, setForm] = useState({ address: '', street_number: '', city: '', state: 'WA', zip_code: '', mls_number: '', list_price: '', list_date: '', status: 'Active', bedrooms: '', bathrooms: '', sqft: '' })
+  const [form, setForm] = useState({ address: '', street_number: '', city: '', state: 'WA', zip_code: '', mls_number: '', list_price: '', list_date: '', status: 'Active', bedrooms: '', bathrooms: '', sqft: '', gallery_url: '' })
   const [saving, setSaving] = useState(false)
   const navigate = useNavigate()
 
@@ -34,7 +34,7 @@ export default function AdminProperties() {
       Object.keys(data).forEach(k => { if (data[k] === '') delete data[k] })
       const result = await api.createProperty(data)
       setShowModal(false)
-      setForm({ address: '', street_number: '', city: '', state: 'WA', zip_code: '', mls_number: '', list_price: '', list_date: '', status: 'Active', bedrooms: '', bathrooms: '', sqft: '' })
+      setForm({ address: '', street_number: '', city: '', state: 'WA', zip_code: '', mls_number: '', list_price: '', list_date: '', status: 'Active', bedrooms: '', bathrooms: '', sqft: '', gallery_url: '' })
       navigate(`/admin/properties/${result.id}`)
     } catch (err) {
       alert(err.message)
@@ -163,6 +163,11 @@ export default function AdminProperties() {
                       <label className="form-label">Sqft</label>
                       <input className="form-input" type="number" value={form.sqft} onChange={e => setForm({...form, sqft: e.target.value})} />
                     </div>
+                  </div>
+                </div>
+                  <div className="form-group">
+                    <label className="form-label">Photo Gallery URL (Autofocus, etc.)</label>
+                    <input className="form-input" value={form.gallery_url} onChange={e => setForm({...form, gallery_url: e.target.value})} placeholder="https://autofocus.io/galleries/..." />
                   </div>
                 </div>
                 <div className="modal__footer">

@@ -409,40 +409,29 @@ export default function ClientDashboard() {
               <>
                 <div className="section-header">
                   <h2 className="section-title">Photo Gallery</h2>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--client-text-muted)' }}>{data.photos?.length || 0} photos</div>
                 </div>
-                {data.photos?.length > 0 ? (
-                  <div className="gallery-grid">
-                    {data.photos.map((photo, idx) => (
-                      <div key={photo.id} className="gallery-item" onClick={() => setLightboxIdx(idx)}>
-                        <img src={photo.url} alt={`Photo ${idx + 1}`} />
-                      </div>
-                    ))}
+
+                {data.photos?.length > 0 && (
+                  <div style={{ marginBottom: '2rem' }}>
+                    <div style={{ borderRadius: 'var(--client-radius-lg)', overflow: 'hidden', boxShadow: 'var(--client-shadow-lg)' }}>
+                      <img src={data.photos[0].url} alt={data.property.address} style={{ width: '100%', maxHeight: '500px', objectFit: 'cover', display: 'block' }} />
+                    </div>
                   </div>
-                ) : (
+                )}
+
+                {data.property.gallery_url ? (
+                  <div style={{ background: 'var(--client-surface)', borderRadius: 'var(--client-radius)', padding: '2rem', boxShadow: 'var(--client-shadow)', border: '1px solid var(--client-border-light)', textAlign: 'center' }}>
+                    <Camera size={32} strokeWidth={1} style={{ color: 'var(--client-gold)', marginBottom: '0.75rem' }} />
+                    <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.3rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--client-text)' }}>View Full Photo Gallery</div>
+                    <div style={{ fontSize: '0.9rem', color: 'var(--client-text-secondary)', marginBottom: '1.25rem', lineHeight: 1.5 }}>Browse all professional photos of your property</div>
+                    <a href={data.property.gallery_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 28px', background: 'var(--client-gold)', color: 'white', borderRadius: '10px', textDecoration: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: '0.95rem', fontWeight: 500 }}>Open Gallery \u2192</a>
+                  </div>
+                ) : !data.photos?.length ? (
                   <div className="empty-state" style={{ paddingTop: '3rem' }}>
                     <Camera size={40} strokeWidth={1} />
                     <div className="empty-state__text" style={{ marginTop: '1rem' }}>Professional photos will be added here</div>
                   </div>
-                )}
-
-                {/* Lightbox */}
-                {lightboxIdx !== null && data.photos?.length > 0 && (
-                  <div className="lightbox" onClick={() => setLightboxIdx(null)}>
-                    <button className="lightbox__close" onClick={() => setLightboxIdx(null)}><X size={20} /></button>
-                    {lightboxIdx > 0 && (
-                      <button className="lightbox__nav lightbox__nav--prev" onClick={e => { e.stopPropagation(); setLightboxIdx(lightboxIdx - 1) }}>
-                        <ChevronLeft size={20} />
-                      </button>
-                    )}
-                    <img src={data.photos[lightboxIdx].url} alt="" onClick={e => e.stopPropagation()} />
-                    {lightboxIdx < data.photos.length - 1 && (
-                      <button className="lightbox__nav lightbox__nav--next" onClick={e => { e.stopPropagation(); setLightboxIdx(lightboxIdx + 1) }}>
-                        <ChevronRight size={20} />
-                      </button>
-                    )}
-                  </div>
-                )}
+                ) : null}
               </>
             )}
           </>
