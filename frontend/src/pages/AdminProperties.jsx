@@ -169,7 +169,6 @@ export default function AdminProperties() {
                     <label className="form-label">Photo Gallery URL (Autofocus, etc.)</label>
                     <input className="form-input" value={form.gallery_url} onChange={e => setForm({...form, gallery_url: e.target.value})} placeholder="https://autofocus.io/galleries/..." />
                   </div>
-                </div>
                 <div className="modal__footer">
                   <button type="button" className="btn btn--ghost" onClick={() => setShowModal(false)}>Cancel</button>
                   <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Creating...' : 'Create Property'}</button>
