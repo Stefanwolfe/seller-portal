@@ -312,6 +312,14 @@ app.add_middleware(
 
 # Serve uploaded photos
 os.makedirs("./uploads/photos", exist_ok=True)
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
+@app.get("/health")
+async def health_check():
+    return {"status": "ok"}
+
 app.mount("/uploads", StaticFiles(directory="./uploads"), name="uploads")
 
 
