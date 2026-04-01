@@ -387,10 +387,35 @@ export default function AdminPropertyDetail() {
     e.preventDefault()
     const data = { ...vendorForm }
     Object.keys(data).forEach(k => { if (data[k] === '') delete data[k] })
-    if (data.scheduled_date) data.scheduled_date = new Date(data.scheduled_date).toISOString()
+    // Send datetime-local value directly — no UTC conversion
     await api.createVendor(id, data)
     setShowVendorForm(false)
     setVendorForm({ vendor_name: '', company: '', phone: '', email: '', service_type: 'photography', scheduled_date: '', notes: '' })
+    loadData()
+  }
+
+  const [editingVendor, setEditingVendor] = useState(null)
+  const [editVendorForm, setEditVendorForm] = useState({})
+
+  const startEditVendor = (v) => {
+    setEditingVendor(v.id)
+    setEditVendorForm({
+      vendor_name: v.vendor_name || '',
+      company: v.company || '',
+      phone: v.phone || '',
+      email: v.email || '',
+      service_type: v.service_type || 'other',
+      scheduled_date: v.scheduled_date ? v.scheduled_date.slice(0, 16) : '',
+      notes: v.notes || '',
+      status: v.status || 'upcoming',
+    })
+  }
+
+  const handleSaveVendor = async () => {
+    const data = { ...editVendorForm }
+    Object.keys(data).forEach(k => { if (data[k] === '') data[k] = null })
+    await api.updateVendor(editingVendor, data)
+    setEditingVendor(null)
     loadData()
   }
 
@@ -1166,50 +1191,109 @@ export default function AdminPropertyDetail() {
               {property.vendor_appointments?.length > 0 ? (
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {property.vendor_appointments.map(v => (
-                    <div key={v.id} style={{
-                      padding: '12px 14px', background: 'var(--admin-bg)', borderRadius: 8,
-                      opacity: v.status === 'complete' || v.status === 'cancelled' ? 0.5 : 1,
-                      borderLeft: `3px solid ${v.status === 'complete' ? 'var(--admin-success)' : v.status === 'cancelled' ? 'var(--admin-text-muted)' : v.status === 'confirmed' ? '#7F77DD' : 'var(--admin-warning)'}`
-                    }}>
-                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 2 }}>
-                            <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>{v.vendor_name}</span>
-                            {v.company && <span style={{ fontSize: '0.82rem', color: 'var(--admin-text-secondary)' }}>· {v.company}</span>}
+                    editingVendor === v.id ? (
+                      /* ─── Edit Mode ─────────────────────────────────── */
+                      <div key={v.id} style={{ padding: '14px', background: 'var(--admin-bg)', borderRadius: 8, borderLeft: '3px solid var(--admin-gold)' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label" style={{ fontSize: '0.72rem' }}>Vendor Name</label>
+                            <input className="form-input" value={editVendorForm.vendor_name} onChange={e => setEditVendorForm({...editVendorForm, vendor_name: e.target.value})} style={{ fontSize: '0.85rem', padding: '6px 10px' }} />
                           </div>
-                          <div style={{ fontSize: '0.78rem', color: 'var(--admin-text-muted)', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: v.notes ? 4 : 0 }}>
-                            <span style={{ background: 'var(--admin-gold-dim)', color: 'var(--admin-gold)', padding: '1px 8px', borderRadius: 4, fontSize: '0.72rem', fontWeight: 500 }}>
-                              {SERVICE_TYPES.find(t => t.value === v.service_type)?.label || v.service_type}
-                            </span>
-                            {v.scheduled_date && (
-                              <span style={{ fontFamily: 'JetBrains Mono' }}>
-                                {new Date(v.scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at {new Date(v.scheduled_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                              </span>
-                            )}
-                            {v.phone && <span>📞 {v.phone}</span>}
-                            {v.email && <span>✉ {v.email}</span>}
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label" style={{ fontSize: '0.72rem' }}>Company</label>
+                            <input className="form-input" value={editVendorForm.company} onChange={e => setEditVendorForm({...editVendorForm, company: e.target.value})} style={{ fontSize: '0.85rem', padding: '6px 10px' }} />
                           </div>
-                          {v.notes && (
-                            <div style={{ fontSize: '0.8rem', color: 'var(--admin-text-secondary)', marginTop: 2, fontStyle: 'italic' }}>
-                              Client note: "{v.notes}"
-                            </div>
-                          )}
                         </div>
-                        <select
-                          value={v.status}
-                          onChange={e => handleUpdateVendorStatus(v.id, e.target.value)}
-                          style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: 4, border: '1px solid var(--admin-border)', background: 'var(--admin-surface)', color: 'var(--admin-text-secondary)', cursor: 'pointer' }}
-                        >
-                          <option value="upcoming">Upcoming</option>
-                          <option value="confirmed">Confirmed</option>
-                          <option value="complete">Complete</option>
-                          <option value="cancelled">Cancelled</option>
-                        </select>
-                        <button onClick={() => handleDeleteVendor(v.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 4 }}>
-                          <Trash2 size={14} />
-                        </button>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label" style={{ fontSize: '0.72rem' }}>Service Type</label>
+                            <select className="form-select" value={editVendorForm.service_type} onChange={e => setEditVendorForm({...editVendorForm, service_type: e.target.value})} style={{ fontSize: '0.85rem', padding: '6px 10px' }}>
+                              {SERVICE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                            </select>
+                          </div>
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label" style={{ fontSize: '0.72rem' }}>Phone</label>
+                            <input className="form-input" value={editVendorForm.phone} onChange={e => setEditVendorForm({...editVendorForm, phone: e.target.value})} style={{ fontSize: '0.85rem', padding: '6px 10px' }} />
+                          </div>
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label" style={{ fontSize: '0.72rem' }}>Email</label>
+                            <input className="form-input" value={editVendorForm.email} onChange={e => setEditVendorForm({...editVendorForm, email: e.target.value})} style={{ fontSize: '0.85rem', padding: '6px 10px' }} />
+                          </div>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label" style={{ fontSize: '0.72rem' }}>Date & Time</label>
+                            <input className="form-input" type="datetime-local" value={editVendorForm.scheduled_date} onChange={e => setEditVendorForm({...editVendorForm, scheduled_date: e.target.value})} style={{ fontSize: '0.85rem', padding: '6px 10px' }} />
+                          </div>
+                          <div className="form-group" style={{ margin: 0 }}>
+                            <label className="form-label" style={{ fontSize: '0.72rem' }}>Status</label>
+                            <select className="form-select" value={editVendorForm.status} onChange={e => setEditVendorForm({...editVendorForm, status: e.target.value})} style={{ fontSize: '0.85rem', padding: '6px 10px' }}>
+                              <option value="upcoming">Upcoming</option>
+                              <option value="confirmed">Confirmed</option>
+                              <option value="complete">Complete</option>
+                              <option value="cancelled">Cancelled</option>
+                            </select>
+                          </div>
+                        </div>
+                        <div className="form-group" style={{ margin: 0, marginBottom: '0.5rem' }}>
+                          <label className="form-label" style={{ fontSize: '0.72rem' }}>Client Notes</label>
+                          <input className="form-input" value={editVendorForm.notes} onChange={e => setEditVendorForm({...editVendorForm, notes: e.target.value})} placeholder="e.g. Please have garage cleared" style={{ fontSize: '0.85rem', padding: '6px 10px' }} />
+                        </div>
+                        <div style={{ display: 'flex', gap: '0.5rem' }}>
+                          <button className="btn btn--primary btn--small" onClick={handleSaveVendor}>Save</button>
+                          <button className="btn btn--ghost btn--small" onClick={() => setEditingVendor(null)}>Cancel</button>
+                        </div>
                       </div>
-                    </div>
+                    ) : (
+                      /* ─── Display Mode ──────────────────────────────── */
+                      <div key={v.id} style={{
+                        padding: '12px 14px', background: 'var(--admin-bg)', borderRadius: 8,
+                        opacity: v.status === 'complete' || v.status === 'cancelled' ? 0.5 : 1,
+                        borderLeft: `3px solid ${v.status === 'complete' ? 'var(--admin-success)' : v.status === 'cancelled' ? 'var(--admin-text-muted)' : v.status === 'confirmed' ? '#7F77DD' : 'var(--admin-warning)'}`
+                      }}>
+                        <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                          <div style={{ flex: 1 }}>
+                            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 2 }}>
+                              <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>{v.vendor_name}</span>
+                              {v.company && <span style={{ fontSize: '0.82rem', color: 'var(--admin-text-secondary)' }}>· {v.company}</span>}
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: 'var(--admin-text-muted)', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: v.notes ? 4 : 0 }}>
+                              <span style={{ background: 'var(--admin-gold-dim)', color: 'var(--admin-gold)', padding: '1px 8px', borderRadius: 4, fontSize: '0.72rem', fontWeight: 500 }}>
+                                {SERVICE_TYPES.find(t => t.value === v.service_type)?.label || v.service_type}
+                              </span>
+                              {v.scheduled_date && (
+                                <span style={{ fontFamily: 'JetBrains Mono' }}>
+                                  {new Date(v.scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at {new Date(v.scheduled_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                </span>
+                              )}
+                              {v.phone && <span>📞 {v.phone}</span>}
+                              {v.email && <span>✉ {v.email}</span>}
+                            </div>
+                            {v.notes && (
+                              <div style={{ fontSize: '0.8rem', color: 'var(--admin-text-secondary)', marginTop: 2, fontStyle: 'italic' }}>
+                                Client note: "{v.notes}"
+                              </div>
+                            )}
+                          </div>
+                          <button onClick={() => startEditVendor(v)} style={{ background: 'none', border: 'none', color: 'var(--admin-gold)', cursor: 'pointer', padding: 4 }} title="Edit">
+                            <Edit3 size={14} />
+                          </button>
+                          <select
+                            value={v.status}
+                            onChange={e => handleUpdateVendorStatus(v.id, e.target.value)}
+                            style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: 4, border: '1px solid var(--admin-border)', background: 'var(--admin-surface)', color: 'var(--admin-text-secondary)', cursor: 'pointer' }}
+                          >
+                            <option value="upcoming">Upcoming</option>
+                            <option value="confirmed">Confirmed</option>
+                            <option value="complete">Complete</option>
+                            <option value="cancelled">Cancelled</option>
+                          </select>
+                          <button onClick={() => handleDeleteVendor(v.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 4 }}>
+                            <Trash2 size={14} />
+                          </button>
+                        </div>
+                      </div>
+                    )
                   ))}
                 </div>
               ) : (
