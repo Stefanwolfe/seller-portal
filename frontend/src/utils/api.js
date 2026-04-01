@@ -209,6 +209,62 @@ class ApiClient {
     return this.request(`/dashboard/${propertyId}`);
   }
 
+  // Phase management
+  updatePhase(propertyId, phase, targetLiveDate) {
+    const body = { phase };
+    if (targetLiveDate !== undefined) body.target_live_date = targetLiveDate;
+    return this.request(`/properties/${propertyId}/phase`, {
+      method: 'PUT',
+      body: JSON.stringify(body),
+    });
+  }
+
+  // Pre-market tasks
+  getTasks(propertyId) {
+    return this.request(`/properties/${propertyId}/tasks`);
+  }
+
+  createTask(propertyId, data) {
+    return this.request(`/properties/${propertyId}/tasks`, {
+      method: 'POST',
+      body: JSON.stringify({ ...data, property_id: propertyId }),
+    });
+  }
+
+  updateTask(taskId, data) {
+    return this.request(`/tasks/${taskId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteTask(taskId) {
+    return this.request(`/tasks/${taskId}`, { method: 'DELETE' });
+  }
+
+  // Pending milestones
+  getMilestones(propertyId) {
+    return this.request(`/properties/${propertyId}/milestones`);
+  }
+
+  createMilestone(propertyId, data) {
+    return this.request(`/properties/${propertyId}/milestones`, {
+      method: 'POST',
+      body: JSON.stringify({ ...data, property_id: propertyId }),
+    });
+  }
+
+  updateMilestone(milestoneId, data) {
+    return this.request(`/milestones/${milestoneId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteMilestone(milestoneId) {
+    return this.request(`/milestones/${milestoneId}`, { method: 'DELETE' });
+  }
+
   // Clients
   getClients() {
     return this.request('/clients');

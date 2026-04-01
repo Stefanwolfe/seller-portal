@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react'
 import { useAuth } from '../utils/AuthContext'
 import api from '../utils/api'
 import { PieChart, Pie, Cell, ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts'
-import { Home, Calendar, Users, Clock, Eye, TrendingUp, Camera, ChevronLeft, ChevronRight, X, LogOut, Image, Megaphone } from 'lucide-react'
+import { Home, Calendar, Users, Clock, Eye, TrendingUp, Camera, ChevronLeft, ChevronRight, X, LogOut, Image, Megaphone, CheckCircle, ListChecks, Flag } from 'lucide-react'
 
 const ACTIVITY_LABELS = {
   showing: 'Private Showing',
@@ -160,7 +160,7 @@ export default function ClientDashboard() {
                   )}
                   <span className={`client-hero__status client-hero__status--${data.property.status?.toLowerCase()}`}>
                     <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'currentColor', display: 'inline-block' }} />
-                    {data.property.status}
+                    {data.property.phase === 'pre_market' ? 'Coming Soon' : data.property.phase === 'pending' ? 'Under Contract' : data.property.status}
                   </span>
                   {data.property.mls_number && (
                     <span className="client-hero__detail" style={{ fontFamily: 'JetBrains Mono, monospace', fontSize: '0.8rem' }}>
@@ -174,6 +174,110 @@ export default function ClientDashboard() {
               </div>
             </div>
 
+            {/* ─── PRE-MARKET PHASE ──────────────────────────────────────────── */}
+            {(data.property.phase === 'pre_market') && (
+              <>
+                {/* Progress Summary */}
+                {(() => {
+                  const tasks = data.pre_market_tasks || []
+                  const completed = tasks.filter(t => t.status === 'complete').length
+                  const total = tasks.length
+                  const pct = total > 0 ? Math.round((completed / total) * 100) : 0
+                  const targetDate = data.property.target_live_date
+                  const daysUntil = targetDate ? Math.max(0, Math.ceil((new Date(targetDate + 'T00:00') - new Date()) / 86400000)) : null
+
+                  return (
+                    <div style={{ marginBottom: '2rem' }}>
+                      <div className="stats-grid">
+                        <div className="stat-card">
+                          <div className="stat-card__label">Preparation Progress</div>
+                          <div className="stat-card__value">{pct}%</div>
+                          <div className="stat-card__sub">{completed} of {total} tasks complete</div>
+                        </div>
+                        <div className="stat-card">
+                          <div className="stat-card__label">Tasks Remaining</div>
+                          <div className="stat-card__value">{total - completed}</div>
+                        </div>
+                        {daysUntil !== null && (
+                          <div className="stat-card">
+                            <div className="stat-card__label">Target Go-Live</div>
+                            <div className="stat-card__value">{daysUntil}</div>
+                            <div className="stat-card__sub">days until listing</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Progress bar */}
+                      {total > 0 && (
+                        <div style={{ marginTop: '1.5rem', padding: '0 2px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: '0.78rem', color: '#9B9B9B' }}>
+                            <span>Getting ready</span>
+                            <span>Ready to list</span>
+                          </div>
+                          <div style={{ height: 8, background: '#F0F0EC', borderRadius: 4, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #B8926A, #D4A44A)', borderRadius: 4, transition: 'width 0.5s ease' }} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* Task Checklist */}
+                <div className="section-header">
+                  <h2 className="section-title">Preparation Checklist</h2>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {(data.pre_market_tasks || []).map(t => (
+                    <div key={t.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '1rem',
+                      padding: '14px 18px', background: 'white', borderRadius: 10,
+                      border: '1px solid #F0F0EC',
+                      opacity: t.status === 'complete' ? 0.65 : 1
+                    }}>
+                      <div style={{
+                        width: 28, height: 28, borderRadius: 8, flexShrink: 0,
+                        border: t.status === 'complete' ? 'none' : '2px solid #E0DCD4',
+                        background: t.status === 'complete' ? '#4A7C59' : 'transparent',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center'
+                      }}>
+                        {t.status === 'complete' && <CheckCircle size={18} color="#fff" />}
+                      </div>
+                      <div style={{ flex: 1 }}>
+                        <div style={{
+                          fontWeight: 500, fontSize: '0.95rem', color: '#1A1A1A',
+                          textDecoration: t.status === 'complete' ? 'line-through' : 'none'
+                        }}>{t.title}</div>
+                        {(t.scheduled_date || t.notes) && (
+                          <div style={{ fontSize: '0.8rem', color: '#9B9B9B', marginTop: 2 }}>
+                            {t.scheduled_date && <span>{new Date(t.scheduled_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                            {t.scheduled_date && t.notes && <span> · </span>}
+                            {t.notes && <span>{t.notes}</span>}
+                          </div>
+                        )}
+                      </div>
+                      <span style={{
+                        fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
+                        padding: '3px 10px', borderRadius: 100,
+                        background: t.status === 'complete' ? 'rgba(74, 124, 89, 0.1)' : t.status === 'in_progress' ? 'rgba(184, 146, 106, 0.1)' : t.status === 'scheduled' ? 'rgba(91, 127, 165, 0.1)' : 'rgba(155, 155, 155, 0.1)',
+                        color: t.status === 'complete' ? '#4A7C59' : t.status === 'in_progress' ? '#B8926A' : t.status === 'scheduled' ? '#5B7FA5' : '#9B9B9B'
+                      }}>
+                        {t.status === 'in_progress' ? 'In Progress' : t.status}
+                      </span>
+                    </div>
+                  ))}
+                  {(!data.pre_market_tasks || data.pre_market_tasks.length === 0) && (
+                    <div style={{ textAlign: 'center', padding: '3rem', color: '#9B9B9B', fontFamily: 'Cormorant Garamond, serif', fontSize: '1.1rem' }}>
+                      Your preparation plan is being finalized. Check back soon.
+                    </div>
+                  )}
+                </div>
+              </>
+            )}
+
+            {/* ─── ACTIVE PHASE ──────────────────────────────────────────────── */}
+            {(data.property.phase === 'active' || !data.property.phase) && (
+              <>
             {/* Tab Nav */}
             <div style={{ display: 'flex', gap: '4px', marginBottom: '2rem', background: 'var(--client-surface-hover)', padding: 4, borderRadius: 'var(--client-radius-sm)', border: '1px solid var(--client-border-light)', width: 'fit-content' }}>
               {[
@@ -432,6 +536,131 @@ export default function ClientDashboard() {
                     <div className="empty-state__text" style={{ marginTop: '1rem' }}>Professional photos will be added here</div>
                   </div>
                 ) : null}
+              </>
+            )}
+          </>
+            )}
+
+            {/* ─── PENDING PHASE ─────────────────────────────────────────────── */}
+            {data.property.phase === 'pending' && (
+              <>
+                {/* Closing Countdown */}
+                {(() => {
+                  const milestones = data.pending_milestones || []
+                  const completed = milestones.filter(m => m.status === 'complete' || m.status === 'waived').length
+                  const total = milestones.length
+                  const closingMs = milestones.find(m => m.milestone_type === 'closing')
+                  const closingDate = closingMs?.due_date
+                  const daysUntilClose = closingDate ? Math.max(0, Math.ceil((new Date(closingDate + 'T00:00') - new Date()) / 86400000)) : null
+                  const nextMs = milestones.find(m => m.status !== 'complete' && m.status !== 'waived' && m.due_date)
+                  const pct = total > 0 ? Math.round((completed / total) * 100) : 0
+
+                  return (
+                    <div style={{ marginBottom: '2rem' }}>
+                      <div className="stats-grid">
+                        {daysUntilClose !== null && (
+                          <div className="stat-card">
+                            <div className="stat-card__label">Days to Closing</div>
+                            <div className="stat-card__value" style={{ color: '#7F77DD' }}>{daysUntilClose}</div>
+                            <div className="stat-card__sub">{closingDate && new Date(closingDate + 'T00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}</div>
+                          </div>
+                        )}
+                        <div className="stat-card">
+                          <div className="stat-card__label">Transaction Progress</div>
+                          <div className="stat-card__value">{pct}%</div>
+                          <div className="stat-card__sub">{completed} of {total} milestones complete</div>
+                        </div>
+                        {nextMs && (
+                          <div className="stat-card">
+                            <div className="stat-card__label">Next Milestone</div>
+                            <div className="stat-card__value" style={{ fontSize: '1.3rem' }}>{nextMs.title}</div>
+                            <div className="stat-card__sub">{nextMs.due_date && new Date(nextMs.due_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Closing progress bar */}
+                      {total > 0 && (
+                        <div style={{ marginTop: '1.5rem', padding: '0 2px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: '0.78rem', color: '#9B9B9B' }}>
+                            <span>Under contract</span>
+                            <span>Closing day</span>
+                          </div>
+                          <div style={{ height: 8, background: '#F0F0EC', borderRadius: 4, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #7F77DD, #AFA9EC)', borderRadius: 4, transition: 'width 0.5s ease' }} />
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+
+                {/* Milestone Timeline */}
+                <div className="section-header">
+                  <h2 className="section-title">Transaction Timeline</h2>
+                </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0' }}>
+                  {(data.pending_milestones || []).map((m, idx, arr) => {
+                    const isComplete = m.status === 'complete' || m.status === 'waived'
+                    const isLast = idx === arr.length - 1
+                    const isPast = m.due_date && new Date(m.due_date + 'T00:00') < new Date() && !isComplete
+                    return (
+                      <div key={m.id} style={{ display: 'flex', gap: '1rem' }}>
+                        {/* Timeline line */}
+                        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 28, flexShrink: 0 }}>
+                          <div style={{
+                            width: 20, height: 20, borderRadius: '50%', flexShrink: 0,
+                            background: isComplete ? '#4A7C59' : isPast ? '#C75B5B' : '#E0DCD4',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                          }}>
+                            {isComplete && <CheckCircle size={14} color="#fff" />}
+                          </div>
+                          {!isLast && (
+                            <div style={{ width: 2, flex: 1, minHeight: 40, background: isComplete ? '#4A7C59' : '#E0DCD4' }} />
+                          )}
+                        </div>
+                        {/* Content */}
+                        <div style={{
+                          flex: 1, paddingBottom: isLast ? 0 : '1.25rem',
+                          padding: '0 0 1.25rem'
+                        }}>
+                          <div style={{
+                            fontWeight: 500, fontSize: '0.95rem', color: '#1A1A1A',
+                            textDecoration: isComplete ? 'line-through' : 'none',
+                            opacity: isComplete ? 0.6 : 1,
+                            marginTop: -2
+                          }}>{m.title}</div>
+                          <div style={{ display: 'flex', gap: '0.75rem', marginTop: 3, flexWrap: 'wrap' }}>
+                            {m.due_date && (
+                              <span style={{
+                                fontSize: '0.8rem', fontFamily: 'JetBrains Mono, monospace',
+                                color: isPast ? '#C75B5B' : '#9B9B9B'
+                              }}>
+                                {new Date(m.due_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}
+                              </span>
+                            )}
+                            <span style={{
+                              fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
+                              padding: '2px 8px', borderRadius: 100,
+                              background: isComplete ? 'rgba(74, 124, 89, 0.1)' : m.status === 'waived' ? 'rgba(155, 155, 155, 0.1)' : m.status === 'in_progress' ? 'rgba(127, 119, 221, 0.1)' : 'rgba(155, 155, 155, 0.1)',
+                              color: isComplete ? '#4A7C59' : m.status === 'waived' ? '#9B9B9B' : m.status === 'in_progress' ? '#7F77DD' : '#9B9B9B'
+                            }}>
+                              {m.status === 'in_progress' ? 'In Progress' : m.status}
+                            </span>
+                          </div>
+                          {m.notes && (
+                            <div style={{ fontSize: '0.82rem', color: '#9B9B9B', marginTop: 4 }}>{m.notes}</div>
+                          )}
+                        </div>
+                      </div>
+                    )
+                  })}
+                  {(!data.pending_milestones || data.pending_milestones.length === 0) && (
+                    <div style={{ textAlign: 'center', padding: '3rem', color: '#9B9B9B', fontFamily: 'Cormorant Garamond, serif', fontSize: '1.1rem' }}>
+                      Your transaction timeline is being set up. Check back soon.
+                    </div>
+                  )}
+                </div>
               </>
             )}
           </>

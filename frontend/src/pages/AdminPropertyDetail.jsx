@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { AdminNav } from './AdminDashboard'
 import api from '../utils/api'
-import { Upload, Trash2, Plus, Check, Send, X, ArrowLeft, Edit3, Image, Calendar, Megaphone, Users, Archive, RotateCcw } from 'lucide-react'
+import { Upload, Trash2, Plus, Check, Send, X, ArrowLeft, Edit3, Image, Calendar, Megaphone, Users, Archive, RotateCcw, ListChecks, Flag } from 'lucide-react'
 
 export default function AdminPropertyDetail() {
   const { id } = useParams()
@@ -37,6 +37,32 @@ export default function AdminPropertyDetail() {
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteTyped, setDeleteTyped] = useState('')
   const [actionLoading, setActionLoading] = useState(false)
+
+  // Phase management
+  const [phaseLoading, setPhaseLoading] = useState(false)
+
+  // Pre-market task form
+  const [showTaskForm, setShowTaskForm] = useState(false)
+  const [taskForm, setTaskForm] = useState({ title: '', task_type: 'custom', scheduled_date: '', notes: '' })
+  const TASK_TYPES = [
+    { value: 'photography', label: 'Professional Photography' },
+    { value: 'staging', label: 'Staging Consultation' },
+    { value: 'repairs', label: 'Repairs / Improvements' },
+    { value: 'inspection', label: 'Pre-listing Inspection' },
+    { value: 'signage', label: 'Signage / Lockbox' },
+    { value: 'custom', label: 'Custom Task' },
+  ]
+
+  // Pending milestone form
+  const [showMilestoneForm, setShowMilestoneForm] = useState(false)
+  const [milestoneForm, setMilestoneForm] = useState({ title: '', milestone_type: 'custom', due_date: '', notes: '' })
+  const MILESTONE_TYPES = [
+    { value: 'inspection', label: 'Inspection Deadline' },
+    { value: 'financing', label: 'Financing Contingency' },
+    { value: 'closing', label: 'Closing Date' },
+    { value: 'walkthrough', label: 'Final Walkthrough' },
+    { value: 'custom', label: 'Custom Milestone' },
+  ]
 
   const loadData = useCallback(async () => {
     try {
@@ -189,6 +215,60 @@ export default function AdminPropertyDetail() {
     }
   }
 
+  const handlePhaseChange = async (newPhase) => {
+    setPhaseLoading(true)
+    try {
+      await api.updatePhase(id, newPhase)
+      loadData()
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setPhaseLoading(false)
+    }
+  }
+
+  const handleCreateTask = async (e) => {
+    e.preventDefault()
+    const data = { ...taskForm }
+    Object.keys(data).forEach(k => { if (data[k] === '') delete data[k] })
+    if (data.task_type !== 'custom') data.title = data.title || TASK_TYPES.find(t => t.value === data.task_type)?.label || data.task_type
+    await api.createTask(id, data)
+    setShowTaskForm(false)
+    setTaskForm({ title: '', task_type: 'custom', scheduled_date: '', notes: '' })
+    loadData()
+  }
+
+  const handleUpdateTaskStatus = async (taskId, status) => {
+    await api.updateTask(taskId, { status })
+    loadData()
+  }
+
+  const handleDeleteTask = async (taskId) => {
+    await api.deleteTask(taskId)
+    loadData()
+  }
+
+  const handleCreateMilestone = async (e) => {
+    e.preventDefault()
+    const data = { ...milestoneForm }
+    Object.keys(data).forEach(k => { if (data[k] === '') delete data[k] })
+    if (data.milestone_type !== 'custom') data.title = data.title || MILESTONE_TYPES.find(t => t.value === data.milestone_type)?.label || data.milestone_type
+    await api.createMilestone(id, data)
+    setShowMilestoneForm(false)
+    setMilestoneForm({ title: '', milestone_type: 'custom', due_date: '', notes: '' })
+    loadData()
+  }
+
+  const handleUpdateMilestoneStatus = async (milestoneId, status) => {
+    await api.updateMilestone(milestoneId, { status })
+    loadData()
+  }
+
+  const handleDeleteMilestone = async (milestoneId) => {
+    await api.deleteMilestone(milestoneId)
+    loadData()
+  }
+
   if (loading || !property) {
     return <div className="admin-portal"><AdminNav /><div className="admin-page" style={{ textAlign: 'center', paddingTop: '4rem', color: 'var(--admin-text-muted)' }}>Loading...</div></div>
   }
@@ -252,12 +332,47 @@ export default function AdminPropertyDetail() {
           </div>
         )}
 
+        {/* Phase Selector */}
+        {!property.is_archived && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '0.75rem',
+            marginBottom: '1.25rem', padding: '0.75rem 1rem',
+            background: 'var(--admin-surface)', border: '1px solid var(--admin-border)', borderRadius: 8
+          }}>
+            <span style={{ fontSize: '0.82rem', color: 'var(--admin-text-secondary)', fontWeight: 500 }}>Phase:</span>
+            {['pre_market', 'active', 'pending'].map(p => (
+              <button
+                key={p}
+                onClick={() => handlePhaseChange(p)}
+                disabled={phaseLoading}
+                style={{
+                  padding: '6px 14px', borderRadius: 6, fontSize: '0.8rem', fontWeight: 500,
+                  cursor: 'pointer', transition: 'all 0.15s', border: 'none',
+                  background: (property.phase || 'active') === p ? 
+                    (p === 'pre_market' ? 'rgba(212, 164, 74, 0.2)' : p === 'active' ? 'rgba(107, 175, 123, 0.2)' : 'rgba(127, 119, 221, 0.2)') : 
+                    'var(--admin-surface-hover)',
+                  color: (property.phase || 'active') === p ? 
+                    (p === 'pre_market' ? 'var(--admin-warning)' : p === 'active' ? 'var(--admin-success)' : '#7F77DD') : 
+                    'var(--admin-text-muted)'
+                }}
+              >
+                {p === 'pre_market' ? 'Pre-Market' : p === 'active' ? 'Active' : 'Pending'}
+              </button>
+            ))}
+            <span style={{ fontSize: '0.75rem', color: 'var(--admin-text-muted)', marginLeft: 'auto' }}>
+              Client sees a different dashboard for each phase
+            </span>
+          </div>
+        )}
+
         {/* Tabs */}
-        <div style={{ display: 'flex', gap: '4px', marginBottom: '1.5rem', borderBottom: '1px solid var(--admin-border)', paddingBottom: '0.75rem' }}>
+        <div style={{ display: 'flex', gap: '4px', marginBottom: '1.5rem', borderBottom: '1px solid var(--admin-border)', paddingBottom: '0.75rem', flexWrap: 'wrap' }}>
           {[
+            ...(property.phase === 'pre_market' ? [{ id: 'tasks', label: 'Tasks', icon: ListChecks, count: property.pre_market_tasks?.filter(t => t.status !== 'complete').length }] : []),
             { id: 'activities', label: 'Activities', icon: Calendar, count: pendingApproval },
             { id: 'photos', label: 'Photos', icon: Image, count: property.photos?.length },
             { id: 'marketing', label: 'Marketing', icon: Megaphone },
+            ...(property.phase === 'pending' ? [{ id: 'milestones', label: 'Milestones', icon: Flag, count: property.pending_milestones?.filter(m => m.status !== 'complete').length }] : []),
             { id: 'access', label: 'Client Access', icon: Users },
           ].map(t => (
             <button
@@ -580,6 +695,227 @@ export default function AdminPropertyDetail() {
                   </table>
                 )
               })()}
+            </div>
+          </>
+        )}
+
+        {/* ─── Pre-Market Tasks Tab ───────────────────────────────────────── */}
+        {tab === 'tasks' && (
+          <>
+            <button className="btn btn--primary" style={{ marginBottom: '1rem' }} onClick={() => setShowTaskForm(true)}><Plus size={14} /> Add Task</button>
+
+            {showTaskForm && (
+              <div className="admin-card" style={{ marginBottom: '1rem', borderColor: 'var(--admin-gold)' }}>
+                <form onSubmit={handleCreateTask}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Task Type</label>
+                      <select className="form-select" value={taskForm.task_type} onChange={e => {
+                        const type = e.target.value
+                        const label = TASK_TYPES.find(t => t.value === type)?.label || ''
+                        setTaskForm({...taskForm, task_type: type, title: type === 'custom' ? '' : label})
+                      }}>
+                        {TASK_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Scheduled Date</label>
+                      <input className="form-input" type="date" value={taskForm.scheduled_date} onChange={e => setTaskForm({...taskForm, scheduled_date: e.target.value})} />
+                    </div>
+                  </div>
+                  {taskForm.task_type === 'custom' && (
+                    <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                      <label className="form-label">Task Name</label>
+                      <input className="form-input" value={taskForm.title} onChange={e => setTaskForm({...taskForm, title: e.target.value})} required placeholder="e.g. Carpet cleaning" />
+                    </div>
+                  )}
+                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                    <label className="form-label">Notes (optional)</label>
+                    <input className="form-input" value={taskForm.notes} onChange={e => setTaskForm({...taskForm, notes: e.target.value})} placeholder="e.g. Vendor confirmed for 2pm" />
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button type="submit" className="btn btn--primary btn--small">Create Task</button>
+                    <button type="button" className="btn btn--ghost btn--small" onClick={() => setShowTaskForm(false)}>Cancel</button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            <div className="admin-card">
+              {property.pre_market_tasks?.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {property.pre_market_tasks.map(t => (
+                    <div key={t.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '0.75rem',
+                      padding: '10px 12px', background: 'var(--admin-bg)', borderRadius: 8,
+                      opacity: t.status === 'complete' ? 0.6 : 1
+                    }}>
+                      <button
+                        onClick={() => handleUpdateTaskStatus(t.id, t.status === 'complete' ? 'pending' : 'complete')}
+                        style={{
+                          width: 22, height: 22, borderRadius: 6, border: '2px solid',
+                          borderColor: t.status === 'complete' ? 'var(--admin-success)' : 'var(--admin-border)',
+                          background: t.status === 'complete' ? 'var(--admin-success)' : 'transparent',
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                        }}
+                      >
+                        {t.status === 'complete' && <Check size={14} color="#fff" />}
+                      </button>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, fontSize: '0.9rem', textDecoration: t.status === 'complete' ? 'line-through' : 'none' }}>{t.title}</div>
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: 2 }}>
+                          {t.scheduled_date && <span style={{ fontSize: '0.78rem', color: 'var(--admin-text-muted)', fontFamily: 'JetBrains Mono' }}>{new Date(t.scheduled_date + 'T00:00').toLocaleDateString()}</span>}
+                          {t.notes && <span style={{ fontSize: '0.78rem', color: 'var(--admin-text-muted)' }}>{t.notes}</span>}
+                        </div>
+                      </div>
+                      {t.status !== 'complete' && (
+                        <select
+                          value={t.status}
+                          onChange={e => handleUpdateTaskStatus(t.id, e.target.value)}
+                          style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: 4, border: '1px solid var(--admin-border)', background: 'var(--admin-surface)', color: 'var(--admin-text-secondary)', cursor: 'pointer' }}
+                        >
+                          <option value="pending">Pending</option>
+                          <option value="scheduled">Scheduled</option>
+                          <option value="in_progress">In Progress</option>
+                          <option value="complete">Complete</option>
+                        </select>
+                      )}
+                      <button onClick={() => handleDeleteTask(t.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 4 }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--admin-text-muted)' }}>
+                  No tasks yet. Add tasks to show your clients what's being done to prepare their home.
+                </div>
+              )}
+            </div>
+
+            {/* Target go-live date */}
+            <div className="admin-card" style={{ marginTop: '1rem' }}>
+              <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem', marginBottom: '0.75rem' }}>Target Go-Live Date</h3>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <input
+                  className="form-input"
+                  type="date"
+                  value={property.target_live_date || ''}
+                  onChange={async (e) => {
+                    await api.updatePhase(id, 'pre_market', e.target.value || null)
+                    loadData()
+                  }}
+                  style={{ maxWidth: 200 }}
+                />
+                <span style={{ fontSize: '0.82rem', color: 'var(--admin-text-muted)' }}>
+                  {property.target_live_date ? `${Math.max(0, Math.ceil((new Date(property.target_live_date + 'T00:00') - new Date()) / 86400000))} days away` : 'Not set'}
+                </span>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ─── Pending Milestones Tab ─────────────────────────────────────── */}
+        {tab === 'milestones' && (
+          <>
+            <button className="btn btn--primary" style={{ marginBottom: '1rem' }} onClick={() => setShowMilestoneForm(true)}><Plus size={14} /> Add Milestone</button>
+
+            {showMilestoneForm && (
+              <div className="admin-card" style={{ marginBottom: '1rem', borderColor: 'var(--admin-gold)' }}>
+                <form onSubmit={handleCreateMilestone}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Milestone Type</label>
+                      <select className="form-select" value={milestoneForm.milestone_type} onChange={e => {
+                        const type = e.target.value
+                        const label = MILESTONE_TYPES.find(t => t.value === type)?.label || ''
+                        setMilestoneForm({...milestoneForm, milestone_type: type, title: type === 'custom' ? '' : label})
+                      }}>
+                        {MILESTONE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Due Date</label>
+                      <input className="form-input" type="date" value={milestoneForm.due_date} onChange={e => setMilestoneForm({...milestoneForm, due_date: e.target.value})} />
+                    </div>
+                  </div>
+                  {milestoneForm.milestone_type === 'custom' && (
+                    <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                      <label className="form-label">Milestone Name</label>
+                      <input className="form-input" value={milestoneForm.title} onChange={e => setMilestoneForm({...milestoneForm, title: e.target.value})} required placeholder="e.g. HOA document review" />
+                    </div>
+                  )}
+                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                    <label className="form-label">Notes (optional)</label>
+                    <input className="form-input" value={milestoneForm.notes} onChange={e => setMilestoneForm({...milestoneForm, notes: e.target.value})} placeholder="e.g. Inspector: John Smith, 555-1234" />
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button type="submit" className="btn btn--primary btn--small">Create Milestone</button>
+                    <button type="button" className="btn btn--ghost btn--small" onClick={() => setShowMilestoneForm(false)}>Cancel</button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            <div className="admin-card">
+              {property.pending_milestones?.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {property.pending_milestones.map(m => (
+                    <div key={m.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '0.75rem',
+                      padding: '10px 12px', background: 'var(--admin-bg)', borderRadius: 8,
+                      opacity: m.status === 'complete' || m.status === 'waived' ? 0.6 : 1
+                    }}>
+                      <button
+                        onClick={() => handleUpdateMilestoneStatus(m.id, m.status === 'complete' ? 'upcoming' : 'complete')}
+                        style={{
+                          width: 22, height: 22, borderRadius: 6, border: '2px solid',
+                          borderColor: m.status === 'complete' ? 'var(--admin-success)' : 'var(--admin-border)',
+                          background: m.status === 'complete' ? 'var(--admin-success)' : 'transparent',
+                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                        }}
+                      >
+                        {m.status === 'complete' && <Check size={14} color="#fff" />}
+                      </button>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, fontSize: '0.9rem', textDecoration: m.status === 'complete' ? 'line-through' : 'none' }}>{m.title}</div>
+                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: 2 }}>
+                          {m.due_date && (
+                            <span style={{
+                              fontSize: '0.78rem', fontFamily: 'JetBrains Mono',
+                              color: m.status !== 'complete' && new Date(m.due_date + 'T00:00') < new Date() ? 'var(--admin-danger)' : 'var(--admin-text-muted)'
+                            }}>
+                              {new Date(m.due_date + 'T00:00').toLocaleDateString()}
+                              {m.status !== 'complete' && m.due_date && (() => {
+                                const days = Math.ceil((new Date(m.due_date + 'T00:00') - new Date()) / 86400000)
+                                return days >= 0 ? ` (${days}d)` : ` (${Math.abs(days)}d overdue)`
+                              })()}
+                            </span>
+                          )}
+                          {m.notes && <span style={{ fontSize: '0.78rem', color: 'var(--admin-text-muted)' }}>{m.notes}</span>}
+                        </div>
+                      </div>
+                      <select
+                        value={m.status}
+                        onChange={e => handleUpdateMilestoneStatus(m.id, e.target.value)}
+                        style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: 4, border: '1px solid var(--admin-border)', background: 'var(--admin-surface)', color: 'var(--admin-text-secondary)', cursor: 'pointer' }}
+                      >
+                        <option value="upcoming">Upcoming</option>
+                        <option value="in_progress">In Progress</option>
+                        <option value="complete">Complete</option>
+                        <option value="waived">Waived</option>
+                      </select>
+                      <button onClick={() => handleDeleteMilestone(m.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 4 }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--admin-text-muted)' }}>
+                  No milestones yet. Add contract dates so your clients can track their transaction progress.
+                </div>
+              )}
             </div>
           </>
         )}

@@ -95,6 +95,8 @@ class Property(Base):
     gallery_url = Column(String(500))
     is_archived = Column(Boolean, default=False)
     archived_at = Column(DateTime)
+    phase = Column(String(20), default="active")  # pre_market, active, pending
+    target_live_date = Column(Date)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # Relationships
@@ -102,6 +104,8 @@ class Property(Base):
     activities = relationship("Activity", back_populates="property", cascade="all, delete-orphan")
     marketing_items = relationship("MarketingItem", back_populates="property", cascade="all, delete-orphan")
     property_accesses = relationship("PropertyAccess", back_populates="property", cascade="all, delete-orphan")
+    pre_market_tasks = relationship("PreMarketTask", back_populates="property", cascade="all, delete-orphan")
+    pending_milestones = relationship("PendingMilestone", back_populates="property", cascade="all, delete-orphan")
 
 
 class PropertyAccess(Base):
@@ -183,6 +187,36 @@ class PasswordResetToken(Base):
     expires_at = Column(DateTime, nullable=False)
     used = Column(Boolean, default=False)
     user = relationship("User")
+
+
+class PreMarketTask(Base):
+    __tablename__ = "pre_market_tasks"
+    id = Column(Integer, primary_key=True, index=True)
+    property_id = Column(Integer, ForeignKey("properties.id"), nullable=False)
+    title = Column(String(300), nullable=False)
+    task_type = Column(String(100))  # photography, staging, repairs, inspection, signage, custom
+    scheduled_date = Column(Date)
+    status = Column(String(50), default="pending")  # pending, scheduled, in_progress, complete
+    notes = Column(Text)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
+    property = relationship("Property", back_populates="pre_market_tasks")
+
+
+class PendingMilestone(Base):
+    __tablename__ = "pending_milestones"
+    id = Column(Integer, primary_key=True, index=True)
+    property_id = Column(Integer, ForeignKey("properties.id"), nullable=False)
+    title = Column(String(300), nullable=False)
+    milestone_type = Column(String(100))  # inspection, financing, title, closing, walkthrough, custom
+    due_date = Column(Date)
+    status = Column(String(50), default="upcoming")  # upcoming, in_progress, complete, waived
+    notes = Column(Text)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    completed_at = Column(DateTime)
+    property = relationship("Property", back_populates="pending_milestones")
 
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -432,6 +466,38 @@ class ResetPasswordRequest(BaseModel):
     token: str
     password: str
 
+class PhaseUpdate(BaseModel):
+    phase: str  # pre_market, active, pending
+    target_live_date: Optional[date] = None
+
+class PreMarketTaskCreate(BaseModel):
+    property_id: int
+    title: str
+    task_type: str = "custom"
+    scheduled_date: Optional[date] = None
+    status: str = "pending"
+    notes: Optional[str] = None
+
+class PreMarketTaskUpdate(BaseModel):
+    title: Optional[str] = None
+    scheduled_date: Optional[date] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
+class PendingMilestoneCreate(BaseModel):
+    property_id: int
+    title: str
+    milestone_type: str = "custom"
+    due_date: Optional[date] = None
+    status: str = "upcoming"
+    notes: Optional[str] = None
+
+class PendingMilestoneUpdate(BaseModel):
+    title: Optional[str] = None
+    due_date: Optional[date] = None
+    status: Optional[str] = None
+    notes: Optional[str] = None
+
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 
@@ -461,6 +527,21 @@ async def lifespan(app: FastAPI):
         except Exception:
             conn.rollback()
     # Migrate: create invite_tokens and password_reset_tokens tables
+    Base.metadata.create_all(bind=engine)
+    # Migrate: add phase and target_live_date columns
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE properties ADD COLUMN phase VARCHAR(20) DEFAULT 'active'"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE properties ADD COLUMN target_live_date DATE"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    # Migrate: create pre_market_tasks and pending_milestones tables
     Base.metadata.create_all(bind=engine)
     # Create upload directory
     os.makedirs(settings.upload_dir, exist_ok=True)
@@ -836,7 +917,8 @@ async def list_properties(
             "pending_approval": pending_approval,
             "created_at": p.created_at.isoformat(),
             "photo_count": len(p.photos),
-            "is_archived": p.is_archived or False
+            "is_archived": p.is_archived or False,
+            "phase": p.phase or "active"
         })
     return results
 
@@ -887,8 +969,28 @@ async def get_property(property_id: int, current_user: User = Depends(get_curren
         "gallery_url": prop.gallery_url,
         "is_archived": prop.is_archived or False,
         "archived_at": prop.archived_at.isoformat() if prop.archived_at else None,
+        "phase": prop.phase or "active",
+        "target_live_date": prop.target_live_date.isoformat() if prop.target_live_date else None,
         "days_on_market": days_on_market,
-        "photos": photos
+        "photos": photos,
+        "pre_market_tasks": [{
+            "id": t.id,
+            "title": t.title,
+            "task_type": t.task_type,
+            "scheduled_date": t.scheduled_date.isoformat() if t.scheduled_date else None,
+            "status": t.status,
+            "notes": t.notes,
+            "sort_order": t.sort_order
+        } for t in sorted(prop.pre_market_tasks, key=lambda x: x.sort_order)],
+        "pending_milestones": [{
+            "id": m.id,
+            "title": m.title,
+            "milestone_type": m.milestone_type,
+            "due_date": m.due_date.isoformat() if m.due_date else None,
+            "status": m.status,
+            "notes": m.notes,
+            "sort_order": m.sort_order
+        } for m in sorted(prop.pending_milestones, key=lambda x: x.sort_order)]
     }
 
 @app.put("/api/properties/{property_id}")
@@ -956,6 +1058,151 @@ async def unarchive_property(property_id: int, admin: User = Depends(require_adm
     db_prop.archived_at = None
     db.commit()
     return {"message": "Property restored. You can re-upload photos and set a gallery URL."}
+
+
+# ─── Phase Management Routes ─────────────────────────────────────────────────
+
+@app.put("/api/properties/{property_id}/phase")
+async def update_phase(property_id: int, phase_data: PhaseUpdate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    db_prop = db.query(Property).filter(Property.id == property_id).first()
+    if not db_prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    if phase_data.phase not in ("pre_market", "active", "pending"):
+        raise HTTPException(status_code=400, detail="Invalid phase. Must be pre_market, active, or pending.")
+    db_prop.phase = phase_data.phase
+    if phase_data.target_live_date is not None:
+        db_prop.target_live_date = phase_data.target_live_date
+    db.commit()
+    return {"message": f"Phase updated to {phase_data.phase}", "phase": phase_data.phase}
+
+
+# ─── Pre-Market Task Routes ──────────────────────────────────────────────────
+
+@app.get("/api/properties/{property_id}/tasks")
+async def get_tasks(property_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role == "client":
+        access = db.query(PropertyAccess).filter(
+            PropertyAccess.user_id == current_user.id,
+            PropertyAccess.property_id == property_id
+        ).first()
+        if not access:
+            raise HTTPException(status_code=403, detail="Access denied")
+    tasks = db.query(PreMarketTask).filter(PreMarketTask.property_id == property_id).order_by(PreMarketTask.sort_order).all()
+    return [{
+        "id": t.id,
+        "title": t.title,
+        "task_type": t.task_type,
+        "scheduled_date": t.scheduled_date.isoformat() if t.scheduled_date else None,
+        "status": t.status,
+        "notes": t.notes,
+        "sort_order": t.sort_order
+    } for t in tasks]
+
+
+@app.post("/api/properties/{property_id}/tasks")
+async def create_task(property_id: int, task: PreMarketTaskCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    # Get max sort_order
+    max_order = db.query(PreMarketTask).filter(PreMarketTask.property_id == property_id).count()
+    t = PreMarketTask(
+        property_id=property_id,
+        title=task.title,
+        task_type=task.task_type,
+        scheduled_date=task.scheduled_date,
+        status=task.status,
+        notes=task.notes,
+        sort_order=max_order
+    )
+    db.add(t)
+    db.commit()
+    db.refresh(t)
+    return {"id": t.id, "message": "Task created"}
+
+
+@app.put("/api/tasks/{task_id}")
+async def update_task(task_id: int, task: PreMarketTaskUpdate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    t = db.query(PreMarketTask).filter(PreMarketTask.id == task_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    for key, value in task.model_dump(exclude_unset=True).items():
+        setattr(t, key, value)
+    if task.status == "complete" and not t.completed_at:
+        t.completed_at = datetime.utcnow()
+    db.commit()
+    return {"message": "Task updated"}
+
+
+@app.delete("/api/tasks/{task_id}")
+async def delete_task(task_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    t = db.query(PreMarketTask).filter(PreMarketTask.id == task_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    db.delete(t)
+    db.commit()
+    return {"message": "Task deleted"}
+
+
+# ─── Pending Milestone Routes ────────────────────────────────────────────────
+
+@app.get("/api/properties/{property_id}/milestones")
+async def get_milestones(property_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role == "client":
+        access = db.query(PropertyAccess).filter(
+            PropertyAccess.user_id == current_user.id,
+            PropertyAccess.property_id == property_id
+        ).first()
+        if not access:
+            raise HTTPException(status_code=403, detail="Access denied")
+    milestones = db.query(PendingMilestone).filter(PendingMilestone.property_id == property_id).order_by(PendingMilestone.sort_order).all()
+    return [{
+        "id": m.id,
+        "title": m.title,
+        "milestone_type": m.milestone_type,
+        "due_date": m.due_date.isoformat() if m.due_date else None,
+        "status": m.status,
+        "notes": m.notes,
+        "sort_order": m.sort_order
+    } for m in milestones]
+
+
+@app.post("/api/properties/{property_id}/milestones")
+async def create_milestone(property_id: int, milestone: PendingMilestoneCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    max_order = db.query(PendingMilestone).filter(PendingMilestone.property_id == property_id).count()
+    m = PendingMilestone(
+        property_id=property_id,
+        title=milestone.title,
+        milestone_type=milestone.milestone_type,
+        due_date=milestone.due_date,
+        status=milestone.status,
+        notes=milestone.notes,
+        sort_order=max_order
+    )
+    db.add(m)
+    db.commit()
+    db.refresh(m)
+    return {"id": m.id, "message": "Milestone created"}
+
+
+@app.put("/api/milestones/{milestone_id}")
+async def update_milestone(milestone_id: int, milestone: PendingMilestoneUpdate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    m = db.query(PendingMilestone).filter(PendingMilestone.id == milestone_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+    for key, value in milestone.model_dump(exclude_unset=True).items():
+        setattr(m, key, value)
+    if milestone.status == "complete" and not m.completed_at:
+        m.completed_at = datetime.utcnow()
+    db.commit()
+    return {"message": "Milestone updated"}
+
+
+@app.delete("/api/milestones/{milestone_id}")
+async def delete_milestone(milestone_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    m = db.query(PendingMilestone).filter(PendingMilestone.id == milestone_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+    db.delete(m)
+    db.commit()
+    return {"message": "Milestone deleted"}
 
 
 # ─── Photo Upload Routes ─────────────────────────────────────────────────────
@@ -1389,6 +1636,8 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
             "bedrooms": prop.bedrooms,
             "bathrooms": prop.bathrooms,
             "sqft": prop.sqft,
+            "phase": prop.phase or "active",
+            "target_live_date": prop.target_live_date.isoformat() if prop.target_live_date else None,
         },
         "stats": {
             "total_activities": len(all_activities),
@@ -1421,7 +1670,23 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
             "url": ph.url,
             "filename": ph.filename,
             "is_hero": ph.is_hero
-        } for ph in sorted(prop.photos, key=lambda x: x.sort_order)]
+        } for ph in sorted(prop.photos, key=lambda x: x.sort_order)],
+        "pre_market_tasks": [{
+            "id": t.id,
+            "title": t.title,
+            "task_type": t.task_type,
+            "scheduled_date": t.scheduled_date.isoformat() if t.scheduled_date else None,
+            "status": t.status,
+            "notes": t.notes
+        } for t in sorted(prop.pre_market_tasks, key=lambda x: x.sort_order)],
+        "pending_milestones": [{
+            "id": m.id,
+            "title": m.title,
+            "milestone_type": m.milestone_type,
+            "due_date": m.due_date.isoformat() if m.due_date else None,
+            "status": m.status,
+            "notes": m.notes
+        } for m in sorted(prop.pending_milestones, key=lambda x: x.sort_order)]
     }
 
 
