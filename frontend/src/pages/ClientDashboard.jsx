@@ -148,8 +148,43 @@ export default function ClientDashboard() {
               {data.photos?.length > 0 ? (
                 <img src={data.photos[0].url} alt={data.property.address} className="client-hero__image" />
               ) : (
-                <div className="client-hero__image-placeholder">
-                  <Home size={48} strokeWidth={1} />
+                <div className="client-hero__image-placeholder" style={{
+                  background: 'linear-gradient(145deg, #3D3A35 0%, #2A2723 40%, #1E1C19 100%)',
+                  position: 'relative', overflow: 'hidden'
+                }}>
+                  {/* Subtle texture overlay */}
+                  <div style={{
+                    position: 'absolute', inset: 0,
+                    backgroundImage: 'radial-gradient(circle at 20% 50%, rgba(184,146,106,0.08) 0%, transparent 50%), radial-gradient(circle at 80% 30%, rgba(212,180,140,0.06) 0%, transparent 40%)',
+                  }} />
+                  {/* Decorative line art */}
+                  <svg viewBox="0 0 400 160" style={{ width: '280px', opacity: 0.12, position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+                    <path d="M200 20L80 80V140H140V100H180V140H220V100H260V140H320V80Z" fill="none" stroke="#B8926A" strokeWidth="1.5" />
+                    <path d="M180 100H220V140H180Z" fill="none" stroke="#B8926A" strokeWidth="1" />
+                    <line x1="60" y1="140" x2="340" y2="140" stroke="#B8926A" strokeWidth="1" />
+                    <circle cx="130" cy="100" r="8" fill="none" stroke="#B8926A" strokeWidth="1" />
+                    <circle cx="270" cy="100" r="8" fill="none" stroke="#B8926A" strokeWidth="1" />
+                  </svg>
+                  {/* "Photo Coming Soon" text */}
+                  <div style={{
+                    position: 'relative', zIndex: 1, textAlign: 'center',
+                    display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '0.5rem'
+                  }}>
+                    <div style={{
+                      width: 48, height: 48, borderRadius: 12,
+                      border: '1.5px solid rgba(184,146,106,0.3)',
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      background: 'rgba(184,146,106,0.06)'
+                    }}>
+                      <Camera size={22} color="#B8926A" strokeWidth={1.5} />
+                    </div>
+                    <span style={{
+                      fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase',
+                      letterSpacing: '0.12em', color: 'rgba(184,146,106,0.5)'
+                    }}>
+                      Photo Coming Soon
+                    </span>
+                  </div>
                 </div>
               )}
               <div className="client-hero__content">
@@ -203,7 +238,7 @@ export default function ClientDashboard() {
                         }}>
                           <div style={{ fontSize: '0.72rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500 }}>Remaining</div>
                           <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1A1A1A', fontFamily: 'Cormorant Garamond, serif' }}>{total - completed}</div>
-                          <div style={{ fontSize: '0.75rem', color: '#9B9B9B' }}>Tasks left</div>
+                          <div style={{ fontSize: '0.75rem', color: '#9B9B9B' }}>tasks left</div>
                         </div>
                         {daysUntil !== null && (
                           <div style={{
