@@ -713,6 +713,29 @@ app.mount("/uploads", StaticFiles(directory="./uploads"), name="uploads")
 
 # ─── Auth Routes ──────────────────────────────────────────────────────────────
 
+def build_user_response(user, db):
+    """Build user dict with properties for login/invite/reset responses."""
+    # Refresh to ensure relationships are loaded
+    db.refresh(user)
+    properties = []
+    for pa in user.property_accesses:
+        p = pa.property
+        if not p.is_archived:
+            properties.append({
+                "id": p.id,
+                "address": p.address,
+                "status": p.status,
+                "hero_photo_url": p.hero_photo_url
+            })
+    return {
+        "id": user.id,
+        "username": user.username,
+        "full_name": user.full_name,
+        "role": user.role,
+        "email": user.email,
+        "properties": properties
+    }
+
 @app.post("/api/auth/login")
 async def login(request: LoginRequest, response: Response, db: Session = Depends(get_db)):
     username = request.username.lower().strip()
@@ -733,15 +756,7 @@ async def login(request: LoginRequest, response: Response, db: Session = Depends
     clear_attempts(username)
     token = create_access_token(data={"sub": user.username, "role": user.role})
     set_auth_cookie(response, token)
-    return {
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "full_name": user.full_name,
-            "role": user.role,
-            "email": user.email
-        }
-    }
+    return {"user": build_user_response(user, db)}
 
 
 @app.post("/api/auth/logout")
@@ -871,15 +886,7 @@ async def accept_invite(request: AcceptInviteRequest, response: Response, db: Se
     # Log them in with a secure cookie
     token = create_access_token(data={"sub": user.username, "role": user.role})
     set_auth_cookie(response, token)
-    return {
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "full_name": user.full_name,
-            "role": user.role,
-            "email": user.email
-        }
-    }
+    return {"user": build_user_response(user, db)}
 
 
 @app.post("/api/auth/forgot-password")
@@ -937,15 +944,7 @@ async def reset_password(request: ResetPasswordRequest, response: Response, db: 
     # Log them in
     token = create_access_token(data={"sub": user.username, "role": user.role})
     set_auth_cookie(response, token)
-    return {
-        "user": {
-            "id": user.id,
-            "username": user.username,
-            "full_name": user.full_name,
-            "role": user.role,
-            "email": user.email
-        }
-    }
+    return {"user": build_user_response(user, db)}
 
 
 @app.get("/api/auth/me")
