@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react'
+import React, { useState, useEffect, useRef } from 'react'
 import { AdminNav } from './AdminDashboard'
 import api from '../utils/api'
-import { Check, Send, Trash2, Edit3, X, Filter } from 'lucide-react'
+import { Check, Send, Trash2, Edit3, X, Filter, Upload } from 'lucide-react'
 
 export default function AdminActivities() {
   const [activities, setActivities] = useState([])
@@ -11,6 +11,11 @@ export default function AdminActivities() {
   const [loading, setLoading] = useState(true)
   const [editingActivity, setEditingActivity] = useState(null)
   const [editFeedback, setEditFeedback] = useState('')
+
+  // ShowingTime import
+  const stRef = useRef()
+  const [stImporting, setStImporting] = useState(false)
+  const [stResult, setStResult] = useState(null)
 
   const load = async () => {
     const [acts, props] = await Promise.all([
@@ -23,6 +28,23 @@ export default function AdminActivities() {
   }
 
   useEffect(() => { load() }, [filterProp, filterStatus])
+
+  const handleShowingTimeImport = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setStImporting(true)
+    setStResult(null)
+    try {
+      const result = await api.importShowingTime(file)
+      setStResult(result)
+      load()
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setStImporting(false)
+      if (stRef.current) stRef.current.value = ''
+    }
+  }
 
   const filtered = filterStatus === 'all' ? activities
     : filterStatus === 'pending' ? activities.filter(a => !a.is_approved)
@@ -53,7 +75,32 @@ export default function AdminActivities() {
       <div className="admin-page">
         <div className="admin-page__header">
           <h1 className="admin-page__title">Activity Management</h1>
+          <button className="btn btn--primary" onClick={() => stRef.current?.click()} disabled={stImporting} style={{ marginLeft: 'auto' }}>
+            <Upload size={14} /> {stImporting ? 'Importing...' : 'Import ShowingTime PDF'}
+          </button>
+          <input ref={stRef} type="file" accept=".pdf" style={{ display: 'none' }} onChange={handleShowingTimeImport} />
         </div>
+
+        {/* ShowingTime Import Results */}
+        {stResult && (
+          <div className="admin-card" style={{ marginBottom: '1rem', borderColor: stResult.created > 0 ? 'var(--admin-success)' : 'var(--admin-warning)' }}>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem' }}>ShowingTime Import Results</h3>
+              <button onClick={() => setStResult(null)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer' }}><X size={16} /></button>
+            </div>
+            <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.75rem', fontSize: '0.85rem', flexWrap: 'wrap' }}>
+              <div><span style={{ fontWeight: 600, color: 'var(--admin-success)' }}>{stResult.created}</span> created</div>
+              {stResult.skipped_cancelled > 0 && <div><span style={{ fontWeight: 600, color: 'var(--admin-text-muted)' }}>{stResult.skipped_cancelled}</span> cancelled (skipped)</div>}
+              {stResult.skipped_duplicate > 0 && <div><span style={{ fontWeight: 600, color: 'var(--admin-text-muted)' }}>{stResult.skipped_duplicate}</span> duplicates (skipped)</div>}
+              {stResult.skipped_no_match > 0 && <div><span style={{ fontWeight: 600, color: 'var(--admin-warning)' }}>{stResult.skipped_no_match}</span> no property match</div>}
+            </div>
+            {stResult.details?.length > 0 && (
+              <div style={{ background: 'var(--admin-bg)', borderRadius: 6, padding: '8px 12px', fontSize: '0.78rem', color: 'var(--admin-text-secondary)', maxHeight: 200, overflow: 'auto', fontFamily: 'JetBrains Mono' }}>
+                {stResult.details.map((d, i) => <div key={i}>{d}</div>)}
+              </div>
+            )}
+          </div>
+        )}
 
         <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1.5rem' }}>
           <select className="form-select" style={{ width: 250 }} value={filterProp} onChange={e => setFilterProp(e.target.value)}>
