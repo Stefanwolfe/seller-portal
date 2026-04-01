@@ -203,7 +203,7 @@ export default function ClientDashboard() {
                         }}>
                           <div style={{ fontSize: '0.72rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500 }}>Remaining</div>
                           <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1A1A1A', fontFamily: 'Cormorant Garamond, serif' }}>{total - completed}</div>
-                          <div style={{ fontSize: '0.75rem', color: '#9B9B9B' }}>tasks left</div>
+                          <div style={{ fontSize: '0.75rem', color: '#9B9B9B' }}>Tasks left</div>
                         </div>
                         {daysUntil !== null && (
                           <div style={{
