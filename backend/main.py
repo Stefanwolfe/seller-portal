@@ -615,87 +615,59 @@ class VendorAppointmentUpdate(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Create tables
+    # Create all tables (idempotent — only creates what's missing)
     Base.metadata.create_all(bind=engine)
-    # Migrate: add gallery_url column if missing
-    from sqlalchemy import text
+
+    # Run column migrations only if needed (checks before altering)
+    from sqlalchemy import text, inspect
+    inspector = inspect(engine)
+
+    def has_column(table, column):
+        cols = [c['name'] for c in inspector.get_columns(table)]
+        return column in cols
+
     with engine.connect() as conn:
         try:
-            conn.execute(text("ALTER TABLE properties ADD COLUMN gallery_url VARCHAR(500)"))
+            # Properties table columns
+            props_to_add = {
+                "gallery_url": "VARCHAR(500)",
+                "is_archived": "BOOLEAN DEFAULT FALSE",
+                "archived_at": "TIMESTAMP",
+                "phase": "VARCHAR(20) DEFAULT 'active'",
+                "target_live_date": "DATE",
+                "mutual_date": "DATE",
+                "inspection_deadline": "DATE",
+                "inspection_response_received": "BOOLEAN DEFAULT FALSE",
+                "inspection_response_days": "INTEGER DEFAULT 3",
+                "inspection_response_date": "DATE",
+                "earnest_money_date": "DATE",
+                "closing_date": "DATE",
+                "updated_at": "TIMESTAMP",
+            }
+            for col, col_type in props_to_add.items():
+                if not has_column("properties", col):
+                    conn.execute(text(f"ALTER TABLE properties ADD COLUMN {col} {col_type}"))
+
+            # Widen street_number if needed
+            if has_column("properties", "street_number"):
+                conn.execute(text("ALTER TABLE properties ALTER COLUMN street_number TYPE VARCHAR(100)"))
+
+            # Pre-market tasks columns
+            if inspector.has_table("pre_market_tasks"):
+                for col, col_type in [("category", "VARCHAR(50) DEFAULT 'vendor'"), ("receipt_url", "VARCHAR(500)")]:
+                    if not has_column("pre_market_tasks", col):
+                        conn.execute(text(f"ALTER TABLE pre_market_tasks ADD COLUMN {col} {col_type}"))
+
+            # Activities columns
+            if inspector.has_table("activities"):
+                if not has_column("activities", "activity_end_date"):
+                    conn.execute(text("ALTER TABLE activities ADD COLUMN activity_end_date TIMESTAMP"))
+
             conn.commit()
-        except Exception:
+        except Exception as e:
+            print(f"Migration error: {e}")
             conn.rollback()
-    # Migrate: add is_archived and archived_at columns
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE properties ADD COLUMN is_archived BOOLEAN DEFAULT FALSE"))
-            conn.commit()
-        except Exception:
-            conn.rollback()
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE properties ADD COLUMN archived_at TIMESTAMP"))
-            conn.commit()
-        except Exception:
-            conn.rollback()
-    # Migrate: create invite_tokens and password_reset_tokens tables
-    Base.metadata.create_all(bind=engine)
-    # Migrate: add phase and target_live_date columns
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE properties ADD COLUMN phase VARCHAR(20) DEFAULT 'active'"))
-            conn.commit()
-        except Exception:
-            conn.rollback()
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE properties ADD COLUMN target_live_date DATE"))
-            conn.commit()
-        except Exception:
-            conn.rollback()
-    # Migrate: create pre_market_tasks and pending_milestones tables
-    Base.metadata.create_all(bind=engine)
-    # Migrate: add pending date fields to properties
-    pending_cols = [
-        ("mutual_date", "DATE"),
-        ("inspection_deadline", "DATE"),
-        ("inspection_response_received", "BOOLEAN DEFAULT FALSE"),
-        ("inspection_response_days", "INTEGER DEFAULT 3"),
-        ("inspection_response_date", "DATE"),
-        ("earnest_money_date", "DATE"),
-        ("closing_date", "DATE"),
-    ]
-    for col_name, col_type in pending_cols:
-        with engine.connect() as conn:
-            try:
-                conn.execute(text(f"ALTER TABLE properties ADD COLUMN {col_name} {col_type}"))
-                conn.commit()
-            except Exception:
-                conn.rollback()
-    # Migrate: add category and receipt_url to pre_market_tasks
-    for col_name, col_type in [("category", "VARCHAR(50) DEFAULT 'vendor'"), ("receipt_url", "VARCHAR(500)")]:
-        with engine.connect() as conn:
-            try:
-                conn.execute(text(f"ALTER TABLE pre_market_tasks ADD COLUMN {col_name} {col_type}"))
-                conn.commit()
-            except Exception:
-                conn.rollback()
-    # Migrate: create custom_phase_sections and custom_phase_section_items tables
-    Base.metadata.create_all(bind=engine)
-    # Migrate: add activity_end_date to activities
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE activities ADD COLUMN activity_end_date TIMESTAMP"))
-            conn.commit()
-        except Exception:
-            conn.rollback()
-    # Migrate: widen street_number column
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE properties ALTER COLUMN street_number TYPE VARCHAR(100)"))
-            conn.commit()
-        except Exception:
-            conn.rollback()
+
     # Create upload directory
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(os.path.join(settings.upload_dir, "photos"), exist_ok=True)
@@ -2051,7 +2023,7 @@ async def import_showingtime(
                 activity_type="showing",
                 activity_date=activity_date,
                 activity_end_date=activity_end_date,
-                brokerage=None,  # ShowingTime only has agent names, not brokerages
+                brokerage=agent,
                 visitor_count=1,
                 source="showingtime",
                 created_by=admin.username,
