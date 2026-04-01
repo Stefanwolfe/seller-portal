@@ -97,6 +97,14 @@ class Property(Base):
     archived_at = Column(DateTime)
     phase = Column(String(20), default="active")  # pre_market, active, pending
     target_live_date = Column(Date)
+    # Pending phase structured dates
+    mutual_date = Column(Date)
+    inspection_deadline = Column(Date)
+    inspection_response_received = Column(Boolean, default=False)
+    inspection_response_days = Column(Integer, default=3)
+    inspection_response_date = Column(Date)
+    earnest_money_date = Column(Date)
+    closing_date = Column(Date)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # Relationships
@@ -106,6 +114,7 @@ class Property(Base):
     property_accesses = relationship("PropertyAccess", back_populates="property", cascade="all, delete-orphan")
     pre_market_tasks = relationship("PreMarketTask", back_populates="property", cascade="all, delete-orphan")
     pending_milestones = relationship("PendingMilestone", back_populates="property", cascade="all, delete-orphan")
+    custom_sections = relationship("CustomPhaseSection", back_populates="property", cascade="all, delete-orphan")
 
 
 class PropertyAccess(Base):
@@ -194,10 +203,12 @@ class PreMarketTask(Base):
     id = Column(Integer, primary_key=True, index=True)
     property_id = Column(Integer, ForeignKey("properties.id"), nullable=False)
     title = Column(String(300), nullable=False)
+    category = Column(String(50), default="vendor")  # vendor, todo, inspection_item
     task_type = Column(String(100))  # photography, staging, repairs, inspection, signage, custom
     scheduled_date = Column(Date)
     status = Column(String(50), default="pending")  # pending, scheduled, in_progress, complete
     notes = Column(Text)
+    receipt_url = Column(String(500))  # For inspection items - uploaded receipt
     sort_order = Column(Integer, default=0)
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)
@@ -217,6 +228,30 @@ class PendingMilestone(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)
     property = relationship("Property", back_populates="pending_milestones")
+
+
+class CustomPhaseSection(Base):
+    __tablename__ = "custom_phase_sections"
+    id = Column(Integer, primary_key=True, index=True)
+    property_id = Column(Integer, ForeignKey("properties.id"), nullable=False)
+    phase = Column(String(20), nullable=False)  # pre_market, pending
+    title = Column(String(300), nullable=False)
+    section_type = Column(String(20), default="checklist")  # date, checklist
+    date_value = Column(Date)  # if section_type is date
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    property = relationship("Property", back_populates="custom_sections")
+    items = relationship("CustomPhaseSectionItem", back_populates="section", cascade="all, delete-orphan")
+
+
+class CustomPhaseSectionItem(Base):
+    __tablename__ = "custom_phase_section_items"
+    id = Column(Integer, primary_key=True, index=True)
+    section_id = Column(Integer, ForeignKey("custom_phase_sections.id"), nullable=False)
+    title = Column(String(300), nullable=False)
+    status = Column(String(50), default="pending")  # pending, complete
+    sort_order = Column(Integer, default=0)
+    section = relationship("CustomPhaseSection", back_populates="items")
 
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -473,6 +508,7 @@ class PhaseUpdate(BaseModel):
 class PreMarketTaskCreate(BaseModel):
     property_id: int
     title: str
+    category: str = "vendor"  # vendor, todo, inspection_item
     task_type: str = "custom"
     scheduled_date: Optional[date] = None
     status: str = "pending"
@@ -483,6 +519,25 @@ class PreMarketTaskUpdate(BaseModel):
     scheduled_date: Optional[date] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+
+class PendingDatesUpdate(BaseModel):
+    mutual_date: Optional[date] = None
+    inspection_deadline: Optional[date] = None
+    earnest_money_date: Optional[date] = None
+    closing_date: Optional[date] = None
+
+class InspectionToggle(BaseModel):
+    received: bool
+    response_days: int = 3
+
+class CustomSectionCreate(BaseModel):
+    phase: str
+    title: str
+    section_type: str = "checklist"  # date, checklist
+    date_value: Optional[date] = None
+
+class CustomSectionItemCreate(BaseModel):
+    title: str
 
 class PendingMilestoneCreate(BaseModel):
     property_id: int
@@ -542,6 +597,33 @@ async def lifespan(app: FastAPI):
         except Exception:
             conn.rollback()
     # Migrate: create pre_market_tasks and pending_milestones tables
+    Base.metadata.create_all(bind=engine)
+    # Migrate: add pending date fields to properties
+    pending_cols = [
+        ("mutual_date", "DATE"),
+        ("inspection_deadline", "DATE"),
+        ("inspection_response_received", "BOOLEAN DEFAULT FALSE"),
+        ("inspection_response_days", "INTEGER DEFAULT 3"),
+        ("inspection_response_date", "DATE"),
+        ("earnest_money_date", "DATE"),
+        ("closing_date", "DATE"),
+    ]
+    for col_name, col_type in pending_cols:
+        with engine.connect() as conn:
+            try:
+                conn.execute(text(f"ALTER TABLE properties ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+    # Migrate: add category and receipt_url to pre_market_tasks
+    for col_name, col_type in [("category", "VARCHAR(50) DEFAULT 'vendor'"), ("receipt_url", "VARCHAR(500)")]:
+        with engine.connect() as conn:
+            try:
+                conn.execute(text(f"ALTER TABLE pre_market_tasks ADD COLUMN {col_name} {col_type}"))
+                conn.commit()
+            except Exception:
+                conn.rollback()
+    # Migrate: create custom_phase_sections and custom_phase_section_items tables
     Base.metadata.create_all(bind=engine)
     # Create upload directory
     os.makedirs(settings.upload_dir, exist_ok=True)
@@ -971,15 +1053,22 @@ async def get_property(property_id: int, current_user: User = Depends(get_curren
         "archived_at": prop.archived_at.isoformat() if prop.archived_at else None,
         "phase": prop.phase or "active",
         "target_live_date": prop.target_live_date.isoformat() if prop.target_live_date else None,
+        "mutual_date": prop.mutual_date.isoformat() if prop.mutual_date else None,
+        "inspection_deadline": prop.inspection_deadline.isoformat() if prop.inspection_deadline else None,
+        "inspection_response_received": prop.inspection_response_received or False,
+        "inspection_response_days": prop.inspection_response_days or 3,
+        "inspection_response_date": prop.inspection_response_date.isoformat() if prop.inspection_response_date else None,
+        "earnest_money_date": prop.earnest_money_date.isoformat() if prop.earnest_money_date else None,
+        "closing_date": prop.closing_date.isoformat() if prop.closing_date else None,
         "days_on_market": days_on_market,
         "photos": photos,
         "pre_market_tasks": [{
             "id": t.id,
-            "title": t.title,
+            "title": t.title, "category": t.category or "vendor",
             "task_type": t.task_type,
             "scheduled_date": t.scheduled_date.isoformat() if t.scheduled_date else None,
             "status": t.status,
-            "notes": t.notes,
+            "notes": t.notes, "receipt_url": t.receipt_url,
             "sort_order": t.sort_order
         } for t in sorted(prop.pre_market_tasks, key=lambda x: x.sort_order)],
         "pending_milestones": [{
@@ -990,7 +1079,15 @@ async def get_property(property_id: int, current_user: User = Depends(get_curren
             "status": m.status,
             "notes": m.notes,
             "sort_order": m.sort_order
-        } for m in sorted(prop.pending_milestones, key=lambda x: x.sort_order)]
+        } for m in sorted(prop.pending_milestones, key=lambda x: x.sort_order)],
+        "custom_sections": [{
+            "id": s.id,
+            "phase": s.phase,
+            "title": s.title,
+            "section_type": s.section_type,
+            "date_value": s.date_value.isoformat() if s.date_value else None,
+            "items": [{"id": i.id, "title": i.title, "status": i.status} for i in sorted(s.items, key=lambda x: x.sort_order)]
+        } for s in sorted(prop.custom_sections, key=lambda x: x.sort_order)]
     }
 
 @app.put("/api/properties/{property_id}")
@@ -1068,12 +1165,120 @@ async def update_phase(property_id: int, phase_data: PhaseUpdate, admin: User = 
     if not db_prop:
         raise HTTPException(status_code=404, detail="Property not found")
     if phase_data.phase not in ("pre_market", "active", "pending"):
-        raise HTTPException(status_code=400, detail="Invalid phase. Must be pre_market, active, or pending.")
+        raise HTTPException(status_code=400, detail="Invalid phase.")
     db_prop.phase = phase_data.phase
+    # Auto-sync the status badge
+    if phase_data.phase == "pre_market":
+        db_prop.status = "Coming Soon"
+    elif phase_data.phase == "active":
+        db_prop.status = "Active"
+    elif phase_data.phase == "pending":
+        db_prop.status = "Pending"
     if phase_data.target_live_date is not None:
         db_prop.target_live_date = phase_data.target_live_date
     db.commit()
-    return {"message": f"Phase updated to {phase_data.phase}", "phase": phase_data.phase}
+    return {"message": f"Phase updated to {phase_data.phase}", "phase": phase_data.phase, "status": db_prop.status}
+
+
+@app.put("/api/properties/{property_id}/pending-dates")
+async def update_pending_dates(property_id: int, dates: PendingDatesUpdate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    db_prop = db.query(Property).filter(Property.id == property_id).first()
+    if not db_prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    for key, value in dates.model_dump(exclude_unset=True).items():
+        setattr(db_prop, key, value)
+    db.commit()
+    return {"message": "Pending dates updated"}
+
+
+@app.put("/api/properties/{property_id}/inspection-toggle")
+async def toggle_inspection_response(property_id: int, toggle: InspectionToggle, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    db_prop = db.query(Property).filter(Property.id == property_id).first()
+    if not db_prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    db_prop.inspection_response_received = toggle.received
+    db_prop.inspection_response_days = toggle.response_days
+    if toggle.received:
+        db_prop.inspection_response_date = (date.today() + timedelta(days=toggle.response_days))
+    else:
+        db_prop.inspection_response_date = None
+    db.commit()
+    return {
+        "message": "Inspection toggle updated",
+        "response_date": db_prop.inspection_response_date.isoformat() if db_prop.inspection_response_date else None
+    }
+
+
+# ─── Custom Section Routes ───────────────────────────────────────────────────
+
+@app.post("/api/properties/{property_id}/custom-sections")
+async def create_custom_section(property_id: int, section: CustomSectionCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    max_order = db.query(CustomPhaseSection).filter(CustomPhaseSection.property_id == property_id, CustomPhaseSection.phase == section.phase).count()
+    s = CustomPhaseSection(
+        property_id=property_id,
+        phase=section.phase,
+        title=section.title,
+        section_type=section.section_type,
+        date_value=section.date_value,
+        sort_order=max_order
+    )
+    db.add(s)
+    db.commit()
+    db.refresh(s)
+    return {"id": s.id, "message": "Section created"}
+
+
+@app.put("/api/custom-sections/{section_id}")
+async def update_custom_section(section_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db), title: Optional[str] = None, date_value: Optional[date] = None):
+    s = db.query(CustomPhaseSection).filter(CustomPhaseSection.id == section_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Section not found")
+    if title is not None:
+        s.title = title
+    if date_value is not None:
+        s.date_value = date_value
+    db.commit()
+    return {"message": "Section updated"}
+
+
+@app.delete("/api/custom-sections/{section_id}")
+async def delete_custom_section(section_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    s = db.query(CustomPhaseSection).filter(CustomPhaseSection.id == section_id).first()
+    if not s:
+        raise HTTPException(status_code=404, detail="Section not found")
+    db.delete(s)
+    db.commit()
+    return {"message": "Section deleted"}
+
+
+@app.post("/api/custom-sections/{section_id}/items")
+async def create_section_item(section_id: int, item: CustomSectionItemCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    max_order = db.query(CustomPhaseSectionItem).filter(CustomPhaseSectionItem.section_id == section_id).count()
+    i = CustomPhaseSectionItem(section_id=section_id, title=item.title, sort_order=max_order)
+    db.add(i)
+    db.commit()
+    db.refresh(i)
+    return {"id": i.id, "message": "Item created"}
+
+
+@app.put("/api/custom-section-items/{item_id}")
+async def update_section_item(item_id: int, status: str, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    i = db.query(CustomPhaseSectionItem).filter(CustomPhaseSectionItem.id == item_id).first()
+    if not i:
+        raise HTTPException(status_code=404, detail="Item not found")
+    i.status = status
+    db.commit()
+    return {"message": "Item updated"}
+
+
+@app.delete("/api/custom-section-items/{item_id}")
+async def delete_section_item(item_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    i = db.query(CustomPhaseSectionItem).filter(CustomPhaseSectionItem.id == item_id).first()
+    if not i:
+        raise HTTPException(status_code=404, detail="Item not found")
+    db.delete(i)
+    db.commit()
+    return {"message": "Item deleted"}
 
 
 # ─── Pre-Market Task Routes ──────────────────────────────────────────────────
@@ -1090,11 +1295,11 @@ async def get_tasks(property_id: int, current_user: User = Depends(get_current_u
     tasks = db.query(PreMarketTask).filter(PreMarketTask.property_id == property_id).order_by(PreMarketTask.sort_order).all()
     return [{
         "id": t.id,
-        "title": t.title,
+        "title": t.title, "category": t.category or "vendor",
         "task_type": t.task_type,
         "scheduled_date": t.scheduled_date.isoformat() if t.scheduled_date else None,
         "status": t.status,
-        "notes": t.notes,
+        "notes": t.notes, "receipt_url": t.receipt_url,
         "sort_order": t.sort_order
     } for t in tasks]
 
@@ -1102,10 +1307,11 @@ async def get_tasks(property_id: int, current_user: User = Depends(get_current_u
 @app.post("/api/properties/{property_id}/tasks")
 async def create_task(property_id: int, task: PreMarketTaskCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
     # Get max sort_order
-    max_order = db.query(PreMarketTask).filter(PreMarketTask.property_id == property_id).count()
+    max_order = db.query(PreMarketTask).filter(PreMarketTask.property_id == property_id, PreMarketTask.category == task.category).count()
     t = PreMarketTask(
         property_id=property_id,
         title=task.title,
+        category=task.category,
         task_type=task.task_type,
         scheduled_date=task.scheduled_date,
         status=task.status,
@@ -1139,6 +1345,22 @@ async def delete_task(task_id: int, admin: User = Depends(require_admin), db: Se
     db.delete(t)
     db.commit()
     return {"message": "Task deleted"}
+
+
+@app.post("/api/tasks/{task_id}/receipt")
+async def upload_receipt(task_id: int, file: UploadFile = File(...), admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    t = db.query(PreMarketTask).filter(PreMarketTask.id == task_id).first()
+    if not t:
+        raise HTTPException(status_code=404, detail="Task not found")
+    # Save receipt file
+    filename = f"receipt_{task_id}_{uuid.uuid4().hex[:8]}_{file.filename}"
+    filepath = os.path.join("./uploads/photos", filename)
+    with open(filepath, "wb") as f:
+        content = await file.read()
+        f.write(content)
+    t.receipt_url = f"/uploads/photos/{filename}"
+    db.commit()
+    return {"receipt_url": t.receipt_url, "message": "Receipt uploaded"}
 
 
 # ─── Pending Milestone Routes ────────────────────────────────────────────────
@@ -1638,6 +1860,13 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
             "sqft": prop.sqft,
             "phase": prop.phase or "active",
             "target_live_date": prop.target_live_date.isoformat() if prop.target_live_date else None,
+            "mutual_date": prop.mutual_date.isoformat() if prop.mutual_date else None,
+            "inspection_deadline": prop.inspection_deadline.isoformat() if prop.inspection_deadline else None,
+            "inspection_response_received": prop.inspection_response_received or False,
+            "inspection_response_days": prop.inspection_response_days or 3,
+            "inspection_response_date": prop.inspection_response_date.isoformat() if prop.inspection_response_date else None,
+            "earnest_money_date": prop.earnest_money_date.isoformat() if prop.earnest_money_date else None,
+            "closing_date": prop.closing_date.isoformat() if prop.closing_date else None,
         },
         "stats": {
             "total_activities": len(all_activities),
@@ -1673,11 +1902,11 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
         } for ph in sorted(prop.photos, key=lambda x: x.sort_order)],
         "pre_market_tasks": [{
             "id": t.id,
-            "title": t.title,
+            "title": t.title, "category": t.category or "vendor",
             "task_type": t.task_type,
             "scheduled_date": t.scheduled_date.isoformat() if t.scheduled_date else None,
             "status": t.status,
-            "notes": t.notes
+            "notes": t.notes, "receipt_url": t.receipt_url
         } for t in sorted(prop.pre_market_tasks, key=lambda x: x.sort_order)],
         "pending_milestones": [{
             "id": m.id,
@@ -1686,7 +1915,15 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
             "due_date": m.due_date.isoformat() if m.due_date else None,
             "status": m.status,
             "notes": m.notes
-        } for m in sorted(prop.pending_milestones, key=lambda x: x.sort_order)]
+        } for m in sorted(prop.pending_milestones, key=lambda x: x.sort_order)],
+        "custom_sections": [{
+            "id": s.id,
+            "phase": s.phase,
+            "title": s.title,
+            "section_type": s.section_type,
+            "date_value": s.date_value.isoformat() if s.date_value else None,
+            "items": [{"id": i.id, "title": i.title, "status": i.status} for i in sorted(s.items, key=lambda x: x.sort_order)]
+        } for s in sorted(prop.custom_sections, key=lambda x: x.sort_order)]
     }
 
 

@@ -265,6 +265,58 @@ class ApiClient {
     return this.request(`/milestones/${milestoneId}`, { method: 'DELETE' });
   }
 
+  // Pending dates
+  updatePendingDates(propertyId, data) {
+    return this.request(`/properties/${propertyId}/pending-dates`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  toggleInspectionResponse(propertyId, received, responseDays = 3) {
+    return this.request(`/properties/${propertyId}/inspection-toggle`, {
+      method: 'PUT',
+      body: JSON.stringify({ received, response_days: responseDays }),
+    });
+  }
+
+  // Receipt upload
+  uploadReceipt(taskId, file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.request(`/tasks/${taskId}/receipt`, {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  // Custom sections
+  createCustomSection(propertyId, data) {
+    return this.request(`/properties/${propertyId}/custom-sections`, {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteCustomSection(sectionId) {
+    return this.request(`/custom-sections/${sectionId}`, { method: 'DELETE' });
+  }
+
+  createSectionItem(sectionId, title) {
+    return this.request(`/custom-sections/${sectionId}/items`, {
+      method: 'POST',
+      body: JSON.stringify({ title }),
+    });
+  }
+
+  updateSectionItem(itemId, status) {
+    return this.request(`/custom-section-items/${itemId}?status=${status}`, { method: 'PUT' });
+  }
+
+  deleteSectionItem(itemId) {
+    return this.request(`/custom-section-items/${itemId}`, { method: 'DELETE' });
+  }
+
   // Clients
   getClients() {
     return this.request('/clients');
