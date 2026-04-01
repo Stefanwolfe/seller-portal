@@ -11,46 +11,42 @@ export function AuthProvider({ children }) {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const token = localStorage.getItem('sp_token');
-    if (token) {
-      api.setToken(token);
-      api.getMe()
-        .then(userData => {
-          setUser(userData);
-          localStorage.setItem('sp_user', JSON.stringify(userData));
-        })
-        .catch(() => {
-          setUser(null);
-          localStorage.removeItem('sp_user');
-          localStorage.removeItem('sp_token');
-        })
-        .finally(() => setLoading(false));
-    } else {
-      setLoading(false);
-    }
+    // Validate session via cookie — no token needed, cookie is sent automatically
+    api.getMe()
+      .then(userData => {
+        setUser(userData);
+        localStorage.setItem('sp_user', JSON.stringify(userData));
+      })
+      .catch(() => {
+        setUser(null);
+        localStorage.removeItem('sp_user');
+      })
+      .finally(() => setLoading(false));
   }, []);
 
   const login = async (username, password) => {
     const data = await api.login(username, password);
-    api.setToken(data.access_token);
+    // Cookie is set by the server response — we just store user info locally for UI
     setUser(data.user);
     localStorage.setItem('sp_user', JSON.stringify(data.user));
     return data.user;
   };
 
-  const signup = async (signupData) => {
-    const data = await api.signup(signupData);
-    api.setToken(data.access_token);
+  const setUserFromResponse = (data) => {
+    // Used by invite accept and password reset flows
     setUser(data.user);
     localStorage.setItem('sp_user', JSON.stringify(data.user));
     return data.user;
   };
 
-  const logout = () => {
-    api.setToken(null);
+  const logout = async () => {
+    try {
+      await api.logout();
+    } catch (e) {
+      // ignore
+    }
     setUser(null);
     localStorage.removeItem('sp_user');
-    localStorage.removeItem('sp_token');
   };
 
   const refreshUser = async () => {
@@ -60,7 +56,7 @@ export function AuthProvider({ children }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, loading, login, signup, logout, refreshUser }}>
+    <AuthContext.Provider value={{ user, loading, login, logout, refreshUser, setUserFromResponse }}>
       {children}
     </AuthContext.Provider>
   );

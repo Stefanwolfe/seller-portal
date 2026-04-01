@@ -2,15 +2,20 @@ import os
 import json
 import uuid
 import shutil
+import secrets
+import time
 from datetime import datetime, timedelta, date
 from typing import Optional, List
 from contextlib import asynccontextmanager
+from collections import defaultdict
 
-from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Query
+from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
+
+import resend
 
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Float, ForeignKey, Date, Enum as SAEnum
 from sqlalchemy.ext.declarative import declarative_base
@@ -34,6 +39,9 @@ class Settings(BaseSettings):
     access_token_expire_minutes: int = 1440  # 24 hours
     upload_dir: str = os.getenv("UPLOAD_DIR", "./uploads")
     anthropic_api_key: str = os.getenv("ANTHROPIC_API_KEY", "")
+    resend_api_key: str = os.getenv("RESEND_API_KEY", "")
+    portal_url: str = os.getenv("PORTAL_URL", "http://localhost:8000")
+    from_email: str = os.getenv("FROM_EMAIL", "DC Concierge <onboarding@resend.dev>")
 
 settings = Settings()
 
@@ -150,9 +158,56 @@ class MarketingItem(Base):
     property = relationship("Property", back_populates="marketing_items")
 
 
+class InviteToken(Base):
+    __tablename__ = "invite_tokens"
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String(255), unique=True, index=True, nullable=False)
+    email = Column(String(200), nullable=False)
+    full_name = Column(String(200))
+    property_id = Column(Integer, ForeignKey("properties.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False)
+    used_at = Column(DateTime)
+    property = relationship("Property")
+
+
+class PasswordResetToken(Base):
+    __tablename__ = "password_reset_tokens"
+    id = Column(Integer, primary_key=True, index=True)
+    token = Column(String(255), unique=True, index=True, nullable=False)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime, nullable=False)
+    used = Column(Boolean, default=False)
+    user = relationship("User")
+
+
 # ─── Auth ─────────────────────────────────────────────────────────────────────
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/auth/login")
+
+# ─── Rate Limiting ────────────────────────────────────────────────────────────
+login_attempts = defaultdict(list)  # username -> [timestamp, ...]
+MAX_ATTEMPTS = 5
+LOCKOUT_SECONDS = 900  # 15 minutes
+
+def check_rate_limit(username: str):
+    now = time.time()
+    # Clean old attempts
+    login_attempts[username] = [t for t in login_attempts[username] if now - t < LOCKOUT_SECONDS]
+    if len(login_attempts[username]) >= MAX_ATTEMPTS:
+        remaining = int(LOCKOUT_SECONDS - (now - login_attempts[username][0]))
+        raise HTTPException(
+            status_code=429,
+            detail=f"Too many failed attempts. Try again in {remaining // 60} minutes."
+        )
+
+def record_failed_attempt(username: str):
+    login_attempts[username].append(time.time())
+
+def clear_attempts(username: str):
+    login_attempts.pop(username, None)
+
 
 def verify_password(plain_password, hashed_password):
     return pwd_context.verify(plain_password, hashed_password)
@@ -166,12 +221,20 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None):
     to_encode.update({"exp": expire})
     return jwt.encode(to_encode, settings.secret_key, algorithm=settings.algorithm)
 
-async def get_current_user(token: str = Depends(oauth2_scheme), db: Session = Depends(get_db)):
+async def get_current_user(request: Request, db: Session = Depends(get_db)):
     credentials_exception = HTTPException(
         status_code=status.HTTP_401_UNAUTHORIZED,
         detail="Could not validate credentials",
-        headers={"WWW-Authenticate": "Bearer"},
     )
+    # Read token from HTTP-only cookie
+    token = request.cookies.get("sp_session")
+    if not token:
+        # Fallback: check Authorization header for backwards compatibility during transition
+        auth_header = request.headers.get("Authorization")
+        if auth_header and auth_header.startswith("Bearer "):
+            token = auth_header[7:]
+        else:
+            raise credentials_exception
     try:
         payload = jwt.decode(token, settings.secret_key, algorithms=[settings.algorithm])
         username: str = payload.get("sub")
@@ -188,6 +251,89 @@ async def require_admin(current_user: User = Depends(get_current_user)):
     if current_user.role != "admin":
         raise HTTPException(status_code=403, detail="Admin access required")
     return current_user
+
+
+def set_auth_cookie(response: Response, token: str):
+    """Set an HTTP-only secure cookie with the session token."""
+    is_production = "railway" in settings.portal_url or "https" in settings.portal_url
+    response.set_cookie(
+        key="sp_session",
+        value=token,
+        httponly=True,
+        secure=is_production,
+        samesite="lax",
+        max_age=settings.access_token_expire_minutes * 60,
+        path="/",
+    )
+
+
+def send_invite_email(email: str, full_name: str, token: str, property_address: str):
+    """Send an invite email via Resend."""
+    if not settings.resend_api_key:
+        print(f"[INVITE] No Resend API key — invite link: {settings.portal_url}/accept-invite?token={token}")
+        return
+    resend.api_key = settings.resend_api_key
+    invite_url = f"{settings.portal_url}/accept-invite?token={token}"
+    resend.Emails.send({
+        "from": settings.from_email,
+        "to": [email],
+        "subject": f"Welcome to Your DC Concierge Seller Portal",
+        "html": f"""
+        <div style="font-family: 'Georgia', serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="font-size: 28px; color: #2C2C2C; margin: 0;">DC Concierge</h1>
+                <p style="color: #B8926A; font-size: 14px; margin-top: 4px;">Seller Portal</p>
+            </div>
+            <p style="font-size: 16px; color: #2C2C2C;">Hi {full_name},</p>
+            <p style="font-size: 16px; color: #4A4A4A; line-height: 1.6;">
+                Your personalized seller portal for <strong>{property_address}</strong> is ready.
+                Click the button below to set your password and access your dashboard.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="{invite_url}" style="background: #B8926A; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">
+                    Set Up Your Account
+                </a>
+            </div>
+            <p style="font-size: 13px; color: #9B9B9B; line-height: 1.5;">
+                This link expires in 48 hours. If you didn't expect this email, you can safely ignore it.
+            </p>
+        </div>
+        """
+    })
+
+
+def send_reset_email(email: str, full_name: str, token: str):
+    """Send a password reset email via Resend."""
+    if not settings.resend_api_key:
+        print(f"[RESET] No Resend API key — reset link: {settings.portal_url}/reset-password?token={token}")
+        return
+    resend.api_key = settings.resend_api_key
+    reset_url = f"{settings.portal_url}/reset-password?token={token}"
+    resend.Emails.send({
+        "from": settings.from_email,
+        "to": [email],
+        "subject": "Reset Your DC Concierge Password",
+        "html": f"""
+        <div style="font-family: 'Georgia', serif; max-width: 600px; margin: 0 auto; padding: 40px 20px;">
+            <div style="text-align: center; margin-bottom: 32px;">
+                <h1 style="font-size: 28px; color: #2C2C2C; margin: 0;">DC Concierge</h1>
+                <p style="color: #B8926A; font-size: 14px; margin-top: 4px;">Seller Portal</p>
+            </div>
+            <p style="font-size: 16px; color: #2C2C2C;">Hi {full_name},</p>
+            <p style="font-size: 16px; color: #4A4A4A; line-height: 1.6;">
+                We received a request to reset your password. Click below to choose a new one.
+            </p>
+            <div style="text-align: center; margin: 32px 0;">
+                <a href="{reset_url}" style="background: #B8926A; color: white; padding: 14px 32px; text-decoration: none; border-radius: 6px; font-size: 16px; font-weight: 500;">
+                    Reset Password
+                </a>
+            </div>
+            <p style="font-size: 13px; color: #9B9B9B; line-height: 1.5;">
+                This link expires in 1 hour. If you didn't request this, you can safely ignore it.
+            </p>
+        </div>
+        """
+    })
 
 
 # ─── Pydantic Schemas ────────────────────────────────────────────────────────
@@ -268,6 +414,22 @@ class ClientPropertyAccess(BaseModel):
     user_id: int
     property_id: int
 
+class InviteRequest(BaseModel):
+    email: str
+    full_name: str
+    property_id: int
+
+class AcceptInviteRequest(BaseModel):
+    token: str
+    password: str
+
+class ForgotPasswordRequest(BaseModel):
+    email: str
+
+class ResetPasswordRequest(BaseModel):
+    token: str
+    password: str
+
 
 # ─── App ──────────────────────────────────────────────────────────────────────
 
@@ -327,26 +489,32 @@ os.makedirs("./uploads/photos", exist_ok=True)
 async def health_check():
     return {"status": "ok"}
 
-@app.get("/health")
-async def health_check():
-    return {"status": "ok"}
-
 app.mount("/uploads", StaticFiles(directory="./uploads"), name="uploads")
 
 
 # ─── Auth Routes ──────────────────────────────────────────────────────────────
 
 @app.post("/api/auth/login")
-async def login(request: LoginRequest, db: Session = Depends(get_db)):
-    user = db.query(User).filter(User.username == request.username.lower()).first()
+async def login(request: LoginRequest, response: Response, db: Session = Depends(get_db)):
+    username = request.username.lower().strip()
+    # Rate limiting
+    check_rate_limit(username)
+
+    user = db.query(User).filter(User.username == username).first()
+    # Also check by email for invite-based users
+    if not user:
+        user = db.query(User).filter(User.email == username).first()
+
     if not user or not verify_password(request.password, user.hashed_password):
+        record_failed_attempt(username)
         raise HTTPException(status_code=401, detail="Invalid credentials")
     if not user.is_active:
         raise HTTPException(status_code=401, detail="Account is disabled")
+
+    clear_attempts(username)
     token = create_access_token(data={"sub": user.username, "role": user.role})
+    set_auth_cookie(response, token)
     return {
-        "access_token": token,
-        "token_type": "bearer",
         "user": {
             "id": user.id,
             "username": user.username,
@@ -356,34 +524,210 @@ async def login(request: LoginRequest, db: Session = Depends(get_db)):
         }
     }
 
-@app.post("/api/auth/signup")
-async def client_signup(request: ClientSignup, db: Session = Depends(get_db)):
-    # Check if username already exists
-    existing = db.query(User).filter(User.username == request.username.lower()).first()
-    if existing:
-        raise HTTPException(status_code=400, detail="Username already registered")
+
+@app.post("/api/auth/logout")
+async def logout(response: Response):
+    response.delete_cookie("sp_session", path="/")
+    return {"message": "Logged out"}
+
+
+@app.post("/api/auth/invite")
+async def send_invite(request: InviteRequest, current_user: User = Depends(require_admin), db: Session = Depends(get_db)):
+    # Verify property exists
+    prop = db.query(Property).filter(Property.id == request.property_id).first()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+
+    # Check if email already has an account
+    existing_user = db.query(User).filter(User.email == request.email.lower()).first()
+    if existing_user:
+        # Just grant access if they don't already have it
+        existing_access = db.query(PropertyAccess).filter(
+            PropertyAccess.user_id == existing_user.id,
+            PropertyAccess.property_id == request.property_id
+        ).first()
+        if not existing_access:
+            db.add(PropertyAccess(user_id=existing_user.id, property_id=request.property_id))
+            db.commit()
+        raise HTTPException(status_code=400, detail="This email already has an account. Property access has been granted.")
+
+    # Expire any existing unused invites for this email
+    db.query(InviteToken).filter(
+        InviteToken.email == request.email.lower(),
+        InviteToken.used == False
+    ).update({"used": True})
+
+    # Create invite token
+    token = secrets.token_urlsafe(48)
+    invite = InviteToken(
+        token=token,
+        email=request.email.lower(),
+        full_name=request.full_name,
+        property_id=request.property_id,
+        expires_at=datetime.utcnow() + timedelta(hours=48)
+    )
+    db.add(invite)
+    db.commit()
+
+    # Send email
+    try:
+        send_invite_email(request.email, request.full_name, token, prop.address)
+    except Exception as e:
+        print(f"[INVITE EMAIL ERROR] {e}")
+        # Still return success — the invite token is created, admin can share the link manually
+        return {
+            "message": "Invite created but email failed to send. Share this link manually.",
+            "invite_url": f"{settings.portal_url}/accept-invite?token={token}"
+        }
+
+    return {"message": f"Invite sent to {request.email}"}
+
+
+@app.get("/api/auth/validate-token")
+async def validate_token(token: str, type: str = "invite", db: Session = Depends(get_db)):
+    if type == "invite":
+        invite = db.query(InviteToken).filter(
+            InviteToken.token == token,
+            InviteToken.used == False,
+            InviteToken.expires_at > datetime.utcnow()
+        ).first()
+        if not invite:
+            raise HTTPException(status_code=400, detail="Invalid or expired invite link")
+        prop = db.query(Property).filter(Property.id == invite.property_id).first()
+        return {
+            "valid": True,
+            "email": invite.email,
+            "full_name": invite.full_name,
+            "property_address": prop.address if prop else "Your Property"
+        }
+    elif type == "reset":
+        reset = db.query(PasswordResetToken).filter(
+            PasswordResetToken.token == token,
+            PasswordResetToken.used == False,
+            PasswordResetToken.expires_at > datetime.utcnow()
+        ).first()
+        if not reset:
+            raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+        user = db.query(User).filter(User.id == reset.user_id).first()
+        return {
+            "valid": True,
+            "full_name": user.full_name if user else ""
+        }
+    raise HTTPException(status_code=400, detail="Invalid token type")
+
+
+@app.post("/api/auth/accept-invite")
+async def accept_invite(request: AcceptInviteRequest, response: Response, db: Session = Depends(get_db)):
+    invite = db.query(InviteToken).filter(
+        InviteToken.token == request.token,
+        InviteToken.used == False,
+        InviteToken.expires_at > datetime.utcnow()
+    ).first()
+    if not invite:
+        raise HTTPException(status_code=400, detail="Invalid or expired invite link")
+
+    if len(request.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    # Create the user account with email as username
     user = User(
-        username=request.username.lower(),
+        username=invite.email,
         hashed_password=get_password_hash(request.password),
         role="client",
-        full_name=request.full_name,
-        email=request.email,
-        phone=request.phone
+        full_name=invite.full_name,
+        email=invite.email
     )
     db.add(user)
     db.commit()
     db.refresh(user)
+
+    # Grant property access
+    db.add(PropertyAccess(user_id=user.id, property_id=invite.property_id))
+
+    # Mark invite as used
+    invite.used = True
+    invite.used_at = datetime.utcnow()
+    db.commit()
+
+    # Log them in with a secure cookie
     token = create_access_token(data={"sub": user.username, "role": user.role})
+    set_auth_cookie(response, token)
     return {
-        "access_token": token,
-        "token_type": "bearer",
         "user": {
             "id": user.id,
             "username": user.username,
             "full_name": user.full_name,
-            "role": user.role
+            "role": user.role,
+            "email": user.email
         }
     }
+
+
+@app.post("/api/auth/forgot-password")
+async def forgot_password(request: ForgotPasswordRequest, db: Session = Depends(get_db)):
+    # Always return success to prevent email enumeration
+    user = db.query(User).filter(User.email == request.email.lower()).first()
+    if not user:
+        # Also try by username
+        user = db.query(User).filter(User.username == request.email.lower()).first()
+    if user and user.email:
+        # Expire old reset tokens
+        db.query(PasswordResetToken).filter(
+            PasswordResetToken.user_id == user.id,
+            PasswordResetToken.used == False
+        ).update({"used": True})
+
+        token = secrets.token_urlsafe(48)
+        reset = PasswordResetToken(
+            token=token,
+            user_id=user.id,
+            expires_at=datetime.utcnow() + timedelta(hours=1)
+        )
+        db.add(reset)
+        db.commit()
+
+        try:
+            send_reset_email(user.email, user.full_name or "there", token)
+        except Exception as e:
+            print(f"[RESET EMAIL ERROR] {e}")
+
+    return {"message": "If an account exists with that email, a reset link has been sent."}
+
+
+@app.post("/api/auth/reset-password")
+async def reset_password(request: ResetPasswordRequest, response: Response, db: Session = Depends(get_db)):
+    reset = db.query(PasswordResetToken).filter(
+        PasswordResetToken.token == request.token,
+        PasswordResetToken.used == False,
+        PasswordResetToken.expires_at > datetime.utcnow()
+    ).first()
+    if not reset:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset link")
+
+    if len(request.password) < 6:
+        raise HTTPException(status_code=400, detail="Password must be at least 6 characters")
+
+    user = db.query(User).filter(User.id == reset.user_id).first()
+    if not user:
+        raise HTTPException(status_code=400, detail="Account not found")
+
+    user.hashed_password = get_password_hash(request.password)
+    reset.used = True
+    db.commit()
+
+    # Log them in
+    token = create_access_token(data={"sub": user.username, "role": user.role})
+    set_auth_cookie(response, token)
+    return {
+        "user": {
+            "id": user.id,
+            "username": user.username,
+            "full_name": user.full_name,
+            "role": user.role,
+            "email": user.email
+        }
+    }
+
 
 @app.get("/api/auth/me")
 async def get_me(current_user: User = Depends(get_current_user)):

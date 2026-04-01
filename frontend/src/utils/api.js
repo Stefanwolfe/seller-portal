@@ -2,26 +2,13 @@ const API_BASE = '/api';
 
 class ApiClient {
   constructor() {
-    this.token = localStorage.getItem('sp_token');
-  }
-
-  setToken(token) {
-    this.token = token;
-    if (token) {
-      localStorage.setItem('sp_token', token);
-    } else {
-      localStorage.removeItem('sp_token');
-    }
+    // No more token in localStorage — cookies handle auth automatically
   }
 
   async request(path, options = {}) {
     const headers = {
       ...(options.headers || {}),
     };
-
-    if (this.token) {
-      headers['Authorization'] = `Bearer ${this.token}`;
-    }
 
     if (!(options.body instanceof FormData)) {
       headers['Content-Type'] = 'application/json';
@@ -30,13 +17,23 @@ class ApiClient {
     const response = await fetch(`${API_BASE}${path}`, {
       ...options,
       headers,
+      credentials: 'same-origin', // Send cookies automatically
     });
 
     if (response.status === 401) {
-      this.setToken(null);
+      // Clear local user data and redirect
       localStorage.removeItem('sp_user');
-      window.location.href = '/login';
+      if (!window.location.pathname.includes('/login') && 
+          !window.location.pathname.includes('/accept-invite') &&
+          !window.location.pathname.includes('/reset-password')) {
+        window.location.href = '/login';
+      }
       throw new Error('Session expired');
+    }
+
+    if (response.status === 429) {
+      const err = await response.json().catch(() => ({ detail: 'Too many attempts' }));
+      throw new Error(err.detail || 'Too many attempts. Please wait.');
     }
 
     if (!response.ok) {
@@ -55,15 +52,46 @@ class ApiClient {
     });
   }
 
-  signup(data) {
-    return this.request('/auth/signup', {
+  logout() {
+    return this.request('/auth/logout', { method: 'POST' });
+  }
+
+  getMe() {
+    return this.request('/auth/me');
+  }
+
+  // Invite flow
+  sendInvite(data) {
+    return this.request('/auth/invite', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   }
 
-  getMe() {
-    return this.request('/auth/me');
+  validateToken(token, type = 'invite') {
+    return this.request(`/auth/validate-token?token=${encodeURIComponent(token)}&type=${type}`);
+  }
+
+  acceptInvite(token, password) {
+    return this.request('/auth/accept-invite', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    });
+  }
+
+  // Password reset
+  forgotPassword(email) {
+    return this.request('/auth/forgot-password', {
+      method: 'POST',
+      body: JSON.stringify({ email }),
+    });
+  }
+
+  resetPassword(token, password) {
+    return this.request('/auth/reset-password', {
+      method: 'POST',
+      body: JSON.stringify({ token, password }),
+    });
   }
 
   // Properties

@@ -4,6 +4,8 @@ import { useAuth } from './utils/AuthContext'
 
 // Pages
 import LoginPage from './pages/LoginPage'
+import AcceptInvitePage from './pages/AcceptInvitePage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 import ClientDashboard from './pages/ClientDashboard'
 import AdminDashboard from './pages/AdminDashboard'
 import AdminProperties from './pages/AdminProperties'
@@ -49,9 +51,10 @@ export default function App() {
       <Route path="/login" element={
         user ? <Navigate to={user.role === 'admin' ? '/admin' : '/dashboard'} replace /> : <LoginPage />
       } />
-      <Route path="/signup" element={
-        user ? <Navigate to="/dashboard" replace /> : <LoginPage isSignup />
+      <Route path="/accept-invite" element={
+        user ? <Navigate to="/dashboard" replace /> : <AcceptInvitePage />
       } />
+      <Route path="/reset-password" element={<ResetPasswordPage />} />
 
       {/* Client Routes */}
       <Route path="/dashboard" element={
