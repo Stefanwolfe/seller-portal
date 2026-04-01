@@ -145,6 +145,7 @@ class Activity(Base):
     property_id = Column(Integer, ForeignKey("properties.id"), nullable=False)
     activity_type = Column(String(50), nullable=False)  # showing, open_house, broker_open, agent_preview
     activity_date = Column(DateTime, nullable=False)
+    activity_end_date = Column(DateTime)  # For open houses/broker opens with time ranges
     brokerage = Column(String(200))
     visitor_count = Column(Integer, default=1)
     feedback_raw = Column(Text)       # Raw feedback from Alfred or manual entry
@@ -482,6 +483,7 @@ class ActivityCreate(BaseModel):
     property_id: int
     activity_type: str
     activity_date: datetime
+    activity_end_date: Optional[datetime] = None
     brokerage: Optional[str] = None
     visitor_count: int = 1
     feedback_raw: Optional[str] = None
@@ -490,6 +492,10 @@ class ActivityUpdate(BaseModel):
     feedback_approved: Optional[str] = None
     is_approved: Optional[bool] = None
     is_pushed: Optional[bool] = None
+    activity_date: Optional[datetime] = None
+    activity_end_date: Optional[datetime] = None
+    brokerage: Optional[str] = None
+    visitor_count: Optional[int] = None
 
 class MarketingItemCreate(BaseModel):
     property_id: int
@@ -664,6 +670,13 @@ async def lifespan(app: FastAPI):
                 conn.rollback()
     # Migrate: create custom_phase_sections and custom_phase_section_items tables
     Base.metadata.create_all(bind=engine)
+    # Migrate: add activity_end_date to activities
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE activities ADD COLUMN activity_end_date TIMESTAMP"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
     # Create upload directory
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(os.path.join(settings.upload_dir, "photos"), exist_ok=True)
@@ -1623,6 +1636,7 @@ async def list_activities(
         "property_id": a.property_id,
         "activity_type": a.activity_type,
         "activity_date": a.activity_date.isoformat(),
+        "activity_end_date": a.activity_end_date.isoformat() if a.activity_end_date else None,
         "brokerage": a.brokerage,
         "visitor_count": a.visitor_count,
         "feedback_raw": a.feedback_raw if current_user.role == "admin" else None,
@@ -1641,6 +1655,7 @@ async def create_activity(activity: ActivityCreate, admin: User = Depends(requir
         property_id=activity.property_id,
         activity_type=activity.activity_type,
         activity_date=activity.activity_date,
+        activity_end_date=activity.activity_end_date,
         brokerage=activity.brokerage,
         visitor_count=activity.visitor_count,
         feedback_raw=activity.feedback_raw,
@@ -1696,6 +1711,14 @@ async def update_activity(activity_id: int, update: ActivityUpdate, admin: User 
             act.pushed_at = datetime.utcnow()
             if not act.feedback_approved:
                 act.feedback_approved = act.feedback_draft or act.feedback_raw
+    if update.activity_date is not None:
+        act.activity_date = update.activity_date
+    if update.activity_end_date is not None:
+        act.activity_end_date = update.activity_end_date
+    if update.brokerage is not None:
+        act.brokerage = update.brokerage
+    if update.visitor_count is not None:
+        act.visitor_count = update.visitor_count
 
     db.commit()
     return {"message": "Activity updated"}
@@ -1945,6 +1968,7 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
         "id": a.id,
         "type": a.activity_type,
         "date": a.activity_date.isoformat(),
+        "end_date": a.activity_end_date.isoformat() if a.activity_end_date else None,
         "brokerage": a.brokerage,
         "visitor_count": a.visitor_count,
         "feedback": a.feedback_approved or a.feedback_draft
