@@ -41,6 +41,43 @@
   --admin-radius: 8px;
 }
 
+/* ─── Admin Light Mode ─────────────────────────────────────────────────── */
+[data-admin-theme="light"] .admin-portal {
+  --admin-bg: #F5F3EF;
+  --admin-surface: #FFFFFF;
+  --admin-surface-hover: #F0EDE6;
+  --admin-text: #2C2820;
+  --admin-text-secondary: #6B6358;
+  --admin-text-muted: #9B9488;
+  --admin-gold: #B8926A;
+  --admin-gold-dim: rgba(184, 146, 106, 0.1);
+  --admin-border: #E0DCD4;
+  --admin-success: #4A7C59;
+  --admin-warning: #B8862D;
+  --admin-danger: #A04040;
+  --admin-shadow: 0 1px 4px rgba(0,0,0,0.06);
+}
+
+[data-admin-theme="light"] .admin-portal .form-input,
+[data-admin-theme="light"] .admin-portal .form-textarea,
+[data-admin-theme="light"] .admin-portal .form-select {
+  background: var(--admin-surface);
+  border-color: var(--admin-border);
+  color: var(--admin-text);
+}
+
+[data-admin-theme="light"] .admin-portal .upload-zone {
+  border-color: var(--admin-border);
+  color: var(--admin-text-muted);
+}
+
+[data-admin-theme="light"] .admin-portal .upload-zone:hover,
+[data-admin-theme="light"] .admin-portal .upload-zone--active {
+  border-color: var(--admin-gold);
+  color: var(--admin-gold);
+  background: var(--admin-gold-dim);
+}
+
 * {
   margin: 0;
   padding: 0;

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { AdminNav } from './AdminDashboard'
 import api from '../utils/api'
+import DatePicker from '../components/DatePicker'
 import { Plus, Search, X } from 'lucide-react'
 
 export default function AdminProperties() {
@@ -138,7 +139,7 @@ export default function AdminProperties() {
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
                     <div className="form-group">
                       <label className="form-label">List Date</label>
-                      <input className="form-input" type="date" value={form.list_date} onChange={e => setForm({...form, list_date: e.target.value})} />
+                      <DatePicker value={form.list_date} onChange={v => setForm({...form, list_date: v})} placeholder="Select list date" />
                     </div>
                     <div className="form-group">
                       <label className="form-label">Status</label>
@@ -164,11 +165,11 @@ export default function AdminProperties() {
                       <input className="form-input" type="number" value={form.sqft} onChange={e => setForm({...form, sqft: e.target.value})} />
                     </div>
                   </div>
-                </div>
                   <div className="form-group">
                     <label className="form-label">Photo Gallery URL (Autofocus, etc.)</label>
                     <input className="form-input" value={form.gallery_url} onChange={e => setForm({...form, gallery_url: e.target.value})} placeholder="https://autofocus.io/galleries/..." />
                   </div>
+                </div>
                 <div className="modal__footer">
                   <button type="button" className="btn btn--ghost" onClick={() => setShowModal(false)}>Cancel</button>
                   <button type="submit" className="btn btn--primary" disabled={saving}>{saving ? 'Creating...' : 'Create Property'}</button>

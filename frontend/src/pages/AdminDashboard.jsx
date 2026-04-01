@@ -2,18 +2,26 @@ import React, { useState, useEffect } from 'react'
 import { Link, useNavigate, useLocation } from 'react-router-dom'
 import { useAuth } from '../utils/AuthContext'
 import api from '../utils/api'
-import { Home, Users, FileText, CheckCircle, AlertCircle, ArrowRight } from 'lucide-react'
+import { Home, Users, FileText, CheckCircle, AlertCircle, ArrowRight, Sun, Moon } from 'lucide-react'
 
 function AdminNav() {
   const { user, logout } = useAuth()
   const location = useLocation()
   const navigate = useNavigate()
+  const [theme, setTheme] = useState(() => localStorage.getItem('admin_theme') || 'dark')
   const links = [
     { path: '/admin', label: 'Dashboard' },
     { path: '/admin/properties', label: 'Properties' },
     { path: '/admin/activities', label: 'Activities' },
     { path: '/admin/clients', label: 'Clients' },
   ]
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-admin-theme', theme)
+    localStorage.setItem('admin_theme', theme)
+  }, [theme])
+
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark')
 
   return (
     <nav className="admin-nav">
@@ -30,6 +38,25 @@ function AdminNav() {
         ))}
       </div>
       <div className="admin-nav__right">
+        <button
+          onClick={toggleTheme}
+          style={{
+            background: 'none',
+            border: '1px solid var(--admin-border)',
+            color: 'var(--admin-gold)',
+            width: 34,
+            height: 34,
+            borderRadius: 8,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            cursor: 'pointer',
+            transition: 'all 0.2s'
+          }}
+          title={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
+        >
+          {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
+        </button>
         <span className="admin-nav__user">{user?.full_name}</span>
         <button className="admin-nav__logout" onClick={() => { logout(); navigate('/login'); }}>Logout</button>
       </div>
