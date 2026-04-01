@@ -19,7 +19,7 @@ export default function AdminPropertyDetail() {
 
   // Activity form
   const [showActivityForm, setShowActivityForm] = useState(false)
-  const [actForm, setActForm] = useState({ activity_type: 'showing', activity_date: '', brokerage: '', visitor_count: 1, feedback_raw: '' })
+  const [actForm, setActForm] = useState({ activity_type: 'showing', activity_date: '', activity_end_date: '', brokerage: '', visitor_count: 1, feedback_raw: '' })
 
   // Marketing form
   const [showMarketingForm, setShowMarketingForm] = useState(false)
@@ -147,10 +147,12 @@ export default function AdminPropertyDetail() {
     e.preventDefault()
     const data = { ...actForm, property_id: parseInt(id), visitor_count: parseInt(actForm.visitor_count) || 1 }
     if (!data.activity_date) { alert('Date is required'); return }
-    data.activity_date = new Date(data.activity_date).toISOString()
+    if (!data.activity_end_date) delete data.activity_end_date
+    if (!data.feedback_raw) delete data.feedback_raw
+    if (!data.brokerage) delete data.brokerage
     await api.createActivity(data)
     setShowActivityForm(false)
-    setActForm({ activity_type: 'showing', activity_date: '', brokerage: '', visitor_count: 1, feedback_raw: '' })
+    setActForm({ activity_type: 'showing', activity_date: '', activity_end_date: '', brokerage: '', visitor_count: 1, feedback_raw: '' })
     loadData()
   }
 
@@ -567,10 +569,10 @@ export default function AdminPropertyDetail() {
             {showActivityForm && (
               <div className="admin-card" style={{ marginBottom: '1rem', borderColor: 'var(--admin-gold)' }}>
                 <form onSubmit={handleCreateActivity}>
-                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 80px', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div className="form-group" style={{ margin: 0 }}>
                       <label className="form-label">Type</label>
-                      <select className="form-select" value={actForm.activity_type} onChange={e => setActForm({...actForm, activity_type: e.target.value})}>
+                      <select className="form-select" value={actForm.activity_type} onChange={e => setActForm({...actForm, activity_type: e.target.value, activity_end_date: ''})}>
                         <option value="showing">Private Showing</option>
                         <option value="open_house">Open House</option>
                         <option value="broker_open">Broker Open</option>
@@ -578,13 +580,21 @@ export default function AdminPropertyDetail() {
                       </select>
                     </div>
                     <div className="form-group" style={{ margin: 0 }}>
-                      <label className="form-label">Date</label>
-                      <input className="form-input" type="datetime-local" value={actForm.activity_date} onChange={e => setActForm({...actForm, activity_date: e.target.value})} required />
-                    </div>
-                    <div className="form-group" style={{ margin: 0 }}>
                       <label className="form-label">Brokerage</label>
                       <input className="form-input" value={actForm.brokerage} onChange={e => setActForm({...actForm, brokerage: e.target.value})} placeholder="e.g. Windermere" />
                     </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: (actForm.activity_type === 'open_house' || actForm.activity_type === 'broker_open') ? '1fr 1fr 80px' : '1fr 80px', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">{(actForm.activity_type === 'open_house' || actForm.activity_type === 'broker_open') ? 'Start Date & Time' : 'Date & Time'}</label>
+                      <input className="form-input" type="datetime-local" value={actForm.activity_date} onChange={e => setActForm({...actForm, activity_date: e.target.value})} required />
+                    </div>
+                    {(actForm.activity_type === 'open_house' || actForm.activity_type === 'broker_open') && (
+                      <div className="form-group" style={{ margin: 0 }}>
+                        <label className="form-label">End Date & Time</label>
+                        <input className="form-input" type="datetime-local" value={actForm.activity_end_date} onChange={e => setActForm({...actForm, activity_end_date: e.target.value})} />
+                      </div>
+                    )}
                     <div className="form-group" style={{ margin: 0 }}>
                       <label className="form-label">Visitors</label>
                       <input className="form-input" type="number" min="1" value={actForm.visitor_count} onChange={e => setActForm({...actForm, visitor_count: e.target.value})} />
@@ -602,60 +612,129 @@ export default function AdminPropertyDetail() {
               </div>
             )}
 
-            {/* Activities List */}
-            <div className="admin-card">
-              <table className="admin-table">
-                <thead>
-                  <tr>
-                    <th>Date</th>
-                    <th>Type</th>
-                    <th>Brokerage</th>
-                    <th>Visitors</th>
-                    <th>Status</th>
-                    <th>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {activities.map(act => (
-                    <tr key={act.id}>
-                      <td style={{ fontFamily: 'JetBrains Mono', fontSize: '0.82rem' }}>{new Date(act.activity_date).toLocaleDateString()}</td>
-                      <td>{act.activity_type?.replace(/_/g, ' ')}</td>
-                      <td>{act.brokerage || '—'}</td>
-                      <td>{act.visitor_count || 1}</td>
-                      <td>
-                        {act.is_pushed ? (
-                          <span className="badge badge--pushed">Pushed</span>
-                        ) : act.is_approved ? (
-                          <span className="badge badge--approved">Approved</span>
-                        ) : (
-                          <span className="badge badge--pending">Pending</span>
-                        )}
-                      </td>
-                      <td>
-                        <div style={{ display: 'flex', gap: '4px' }}>
-                          {!act.is_approved && (
-                            <button className="btn btn--success btn--small" onClick={() => handleApproveActivity(act)}>
-                              <Edit3 size={12} /> Review
-                            </button>
-                          )}
-                          {act.is_approved && !act.is_pushed && (
-                            <button className="btn btn--primary btn--small" onClick={() => handlePushActivity(act.id)}>
-                              <Send size={12} /> Push
-                            </button>
-                          )}
-                          <button className="btn btn--danger btn--small" onClick={async () => { if(confirm('Delete?')){ await api.deleteActivity(act.id); loadData(); } }}>
-                            <Trash2 size={12} />
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {activities.length === 0 && (
-                    <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--admin-text-muted)' }}>No activities yet</td></tr>
+            {/* ─── Upcoming Activities ─────────────────────────────────── */}
+            {(() => {
+              const now = new Date()
+              const upcoming = activities.filter(a => new Date(a.activity_date) > now)
+              const past = activities.filter(a => new Date(a.activity_date) <= now)
+
+              const renderTimeRange = (act) => {
+                const start = new Date(act.activity_date)
+                const dateStr = start.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+                const startTime = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                if (act.activity_end_date) {
+                  const end = new Date(act.activity_end_date)
+                  const endTime = end.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                  return `${dateStr} · ${startTime} – ${endTime}`
+                }
+                return `${dateStr} · ${startTime}`
+              }
+
+              return (
+                <>
+                  {upcoming.length > 0 && (
+                    <>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                        <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem' }}>Upcoming</h3>
+                        <span style={{ fontSize: '0.72rem', background: 'rgba(127,119,221,0.15)', color: '#7F77DD', padding: '2px 8px', borderRadius: 100, fontWeight: 600 }}>{upcoming.length}</span>
+                      </div>
+                      <div className="admin-card" style={{ marginBottom: '1.5rem' }}>
+                        <table className="admin-table">
+                          <thead>
+                            <tr>
+                              <th>Date / Time</th>
+                              <th>Type</th>
+                              <th>Brokerage</th>
+                              <th>Actions</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {upcoming.map(act => (
+                              <tr key={act.id}>
+                                <td style={{ fontFamily: 'JetBrains Mono', fontSize: '0.82rem' }}>{renderTimeRange(act)}</td>
+                                <td>{act.activity_type?.replace(/_/g, ' ')}</td>
+                                <td>{act.brokerage || '—'}</td>
+                                <td>
+                                  <div style={{ display: 'flex', gap: '4px' }}>
+                                    {!act.is_pushed && (
+                                      <button className="btn btn--primary btn--small" onClick={() => handlePushActivity(act.id)}>
+                                        <Send size={12} /> Push
+                                      </button>
+                                    )}
+                                    <button className="btn btn--danger btn--small" onClick={async () => { if(confirm('Delete?')){ await api.deleteActivity(act.id); loadData(); } }}>
+                                      <Trash2 size={12} />
+                                    </button>
+                                  </div>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
                   )}
-                </tbody>
-              </table>
-            </div>
+
+                  {/* ─── Past Activities ──────────────────────────────────── */}
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem' }}>{upcoming.length > 0 ? 'Past Activities' : 'Activities'}</h3>
+                    {past.length > 0 && <span style={{ fontSize: '0.72rem', background: 'var(--admin-gold-dim)', color: 'var(--admin-gold)', padding: '2px 8px', borderRadius: 100, fontWeight: 600 }}>{past.length}</span>}
+                  </div>
+                  <div className="admin-card">
+                    <table className="admin-table">
+                      <thead>
+                        <tr>
+                          <th>Date / Time</th>
+                          <th>Type</th>
+                          <th>Brokerage</th>
+                          <th>Visitors</th>
+                          <th>Status</th>
+                          <th>Actions</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {past.map(act => (
+                          <tr key={act.id}>
+                            <td style={{ fontFamily: 'JetBrains Mono', fontSize: '0.82rem' }}>{renderTimeRange(act)}</td>
+                            <td>{act.activity_type?.replace(/_/g, ' ')}</td>
+                            <td>{act.brokerage || '—'}</td>
+                            <td>{act.visitor_count || 1}</td>
+                            <td>
+                              {act.is_pushed ? (
+                                <span className="badge badge--pushed">Pushed</span>
+                              ) : act.is_approved ? (
+                                <span className="badge badge--approved">Approved</span>
+                              ) : (
+                                <span className="badge badge--pending">Pending</span>
+                              )}
+                            </td>
+                            <td>
+                              <div style={{ display: 'flex', gap: '4px' }}>
+                                {!act.is_approved && (
+                                  <button className="btn btn--success btn--small" onClick={() => handleApproveActivity(act)}>
+                                    <Edit3 size={12} /> Review
+                                  </button>
+                                )}
+                                {act.is_approved && !act.is_pushed && (
+                                  <button className="btn btn--primary btn--small" onClick={() => handlePushActivity(act.id)}>
+                                    <Send size={12} /> Push
+                                  </button>
+                                )}
+                                <button className="btn btn--danger btn--small" onClick={async () => { if(confirm('Delete?')){ await api.deleteActivity(act.id); loadData(); } }}>
+                                  <Trash2 size={12} />
+                                </button>
+                              </div>
+                            </td>
+                          </tr>
+                        ))}
+                        {past.length === 0 && (
+                          <tr><td colSpan={6} style={{ textAlign: 'center', padding: '2rem', color: 'var(--admin-text-muted)' }}>No past activities yet</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              )
+            })()}
 
             {/* Edit/Approve Modal */}
             {editingActivity && (

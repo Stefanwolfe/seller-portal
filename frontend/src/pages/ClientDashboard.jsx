@@ -499,6 +499,63 @@ export default function ClientDashboard() {
             {/* ─── Overview Tab ─────────────────────────────────────────────── */}
             {activeTab === 'overview' && (
               <>
+                {/* Upcoming Events */}
+                {(() => {
+                  const now = new Date()
+                  const upcoming = (data.recent_activity || []).filter(a => new Date(a.date) > now)
+                  if (upcoming.length === 0) return null
+                  return (
+                    <div style={{ marginBottom: '2rem' }}>
+                      <div className="section-header">
+                        <h2 className="section-title">Upcoming Events</h2>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {upcoming.map(act => {
+                          const start = new Date(act.date)
+                          const hasEnd = act.end_date
+                          const isOpen = act.type === 'open_house' || act.type === 'broker_open'
+                          return (
+                            <div key={act.id} style={{
+                              padding: '16px 20px', background: 'white', borderRadius: 10,
+                              border: '1px solid #F0F0EC',
+                              borderLeft: `4px solid ${isOpen ? '#5B7FA5' : '#B8926A'}`
+                            }}>
+                              <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+                                <div>
+                                  <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#1A1A1A', marginBottom: 3 }}>
+                                    {ACTIVITY_LABELS[act.type] || act.type?.replace(/_/g, ' ')}
+                                  </div>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', fontSize: '0.88rem', color: '#6B6B6B' }}>
+                                    <Calendar size={14} color="#9B9B9B" />
+                                    <span style={{ fontWeight: 500, color: '#1A1A1A' }}>
+                                      {start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                    </span>
+                                    <span>
+                                      {start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                      {hasEnd && ` – ${new Date(act.end_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
+                                    </span>
+                                  </div>
+                                  {act.brokerage && (
+                                    <div style={{ fontSize: '0.82rem', color: '#9B9B9B', marginTop: 3 }}>Hosted by {act.brokerage}</div>
+                                  )}
+                                </div>
+                                <span style={{
+                                  fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
+                                  padding: '3px 10px', borderRadius: 100, flexShrink: 0,
+                                  background: isOpen ? 'rgba(91, 127, 165, 0.1)' : 'rgba(184, 146, 106, 0.1)',
+                                  color: isOpen ? '#5B7FA5' : '#B8926A'
+                                }}>
+                                  {isOpen ? (act.type === 'open_house' ? 'Open House' : 'Broker Open') : 'Showing'}
+                                </span>
+                              </div>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    </div>
+                  )
+                })()}
+
                 {/* Stats Cards */}
                 <div className="stats-grid">
                   <div className="stat-card">
@@ -649,15 +706,25 @@ export default function ClientDashboard() {
                 {data.recent_activity?.length > 0 ? (
                   data.recent_activity.map(act => {
                     const Icon = ACTIVITY_ICONS[act.type] || Eye
+                    const start = new Date(act.date)
+                    const dateStr = formatDate(act.date)
+                    const timeStr = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+                    const endTimeStr = act.end_date ? new Date(act.end_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null
+                    const isUpcoming = start > new Date()
                     return (
-                      <div key={act.id} className="activity-item">
+                      <div key={act.id} className="activity-item" style={isUpcoming ? { borderLeft: '3px solid #5B7FA5', paddingLeft: 14 } : {}}>
                         <div className={`activity-item__icon activity-item__icon--${act.type}`}>
                           <Icon size={18} />
                         </div>
                         <div className="activity-item__content">
                           <div className="activity-item__header">
-                            <span className="activity-item__type">{ACTIVITY_LABELS[act.type] || act.type}</span>
-                            <span className="activity-item__date">{formatDate(act.date)}</span>
+                            <span className="activity-item__type">
+                              {ACTIVITY_LABELS[act.type] || act.type}
+                              {isUpcoming && <span style={{ fontSize: '0.68rem', marginLeft: 6, background: 'rgba(91,127,165,0.1)', color: '#5B7FA5', padding: '1px 6px', borderRadius: 100, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Upcoming</span>}
+                            </span>
+                            <span className="activity-item__date">
+                              {dateStr} · {timeStr}{endTimeStr ? ` – ${endTimeStr}` : ''}
+                            </span>
                           </div>
                           {act.brokerage && <div className="activity-item__brokerage">{act.brokerage}</div>}
                           {act.visitor_count > 1 && <div className="activity-item__brokerage">{act.visitor_count} visitors</div>}
