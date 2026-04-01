@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { AdminNav } from './AdminDashboard'
 import api from '../utils/api'
-import { Upload, Trash2, Plus, Check, Send, X, ArrowLeft, Edit3, Image, Calendar, Megaphone, Users } from 'lucide-react'
+import { Upload, Trash2, Plus, Check, Send, X, ArrowLeft, Edit3, Image, Calendar, Megaphone, Users, Archive, RotateCcw } from 'lucide-react'
 
 export default function AdminPropertyDetail() {
   const { id } = useParams()
@@ -31,6 +31,12 @@ export default function AdminPropertyDetail() {
   // Edit activity modal
   const [editingActivity, setEditingActivity] = useState(null)
   const [editFeedback, setEditFeedback] = useState('')
+
+  // Archive / Delete confirmation
+  const [showArchiveConfirm, setShowArchiveConfirm] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteTyped, setDeleteTyped] = useState('')
+  const [actionLoading, setActionLoading] = useState(false)
 
   const loadData = useCallback(async () => {
     try {
@@ -147,6 +153,42 @@ export default function AdminPropertyDetail() {
     }
   }
 
+  const handleArchive = async () => {
+    setActionLoading(true)
+    try {
+      await api.archiveProperty(id)
+      navigate('/admin/properties')
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleUnarchive = async () => {
+    setActionLoading(true)
+    try {
+      await api.unarchiveProperty(id)
+      loadData()
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
+  const handleDelete = async () => {
+    setActionLoading(true)
+    try {
+      await api.deleteProperty(id)
+      navigate('/admin/properties')
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setActionLoading(false)
+    }
+  }
+
   if (loading || !property) {
     return <div className="admin-portal"><AdminNav /><div className="admin-page" style={{ textAlign: 'center', paddingTop: '4rem', color: 'var(--admin-text-muted)' }}>Loading...</div></div>
   }
@@ -169,8 +211,46 @@ export default function AdminPropertyDetail() {
               {property.days_on_market} days on market
             </div>
           </div>
-          <span className={`badge ${property.status === 'Active' ? 'badge--approved' : 'badge--pending'}`} style={{ fontSize: '0.8rem', padding: '4px 12px' }}>{property.status}</span>
+          <span className={`badge ${property.is_archived ? 'badge--archived' : property.status === 'Active' ? 'badge--approved' : 'badge--pending'}`} style={{ fontSize: '0.8rem', padding: '4px 12px' }}>{property.is_archived ? 'Archived' : property.status}</span>
+          <div style={{ display: 'flex', gap: '0.5rem' }}>
+            {property.is_archived ? (
+              <>
+                <button className="btn btn--ghost btn--small" onClick={handleUnarchive} disabled={actionLoading}>
+                  <RotateCcw size={14} /> Restore
+                </button>
+                <button className="btn btn--small" style={{ background: '#d32f2f', color: 'white', border: 'none' }} onClick={() => setShowDeleteConfirm(true)}>
+                  <Trash2 size={14} /> Delete Forever
+                </button>
+              </>
+            ) : (
+              <button className="btn btn--ghost btn--small" onClick={() => setShowArchiveConfirm(true)}>
+                <Archive size={14} /> Archive
+              </button>
+            )}
+          </div>
         </div>
+
+        {/* Archived Banner */}
+        {property.is_archived && (
+          <div style={{ 
+            background: 'rgba(155, 155, 155, 0.1)', 
+            border: '1px solid rgba(155, 155, 155, 0.3)', 
+            borderRadius: 8, 
+            padding: '0.75rem 1rem', 
+            marginBottom: '1.25rem',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.75rem',
+            fontSize: '0.85rem',
+            color: 'var(--admin-text-secondary)'
+          }}>
+            <Archive size={16} style={{ color: '#9B9B9B', flexShrink: 0 }} />
+            <span>
+              This property was archived{property.archived_at ? ` on ${new Date(property.archived_at).toLocaleDateString()}` : ''}. 
+              Photos and gallery link have been removed. Activity data and history are preserved. Click <strong>Restore</strong> to bring it back.
+            </span>
+          </div>
+        )}
 
         {/* Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '1.5rem', borderBottom: '1px solid var(--admin-border)', paddingBottom: '0.75rem' }}>
@@ -502,6 +582,74 @@ export default function AdminPropertyDetail() {
               })()}
             </div>
           </>
+        )}
+
+        {/* ─── Archive Confirmation Modal ─────────────────────────────────── */}
+        {showArchiveConfirm && (
+          <div className="modal-overlay" onClick={() => setShowArchiveConfirm(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <div className="modal__header">
+                <h3 className="modal__title">Archive Property</h3>
+                <button className="modal__close" onClick={() => setShowArchiveConfirm(false)}><X size={18} /></button>
+              </div>
+              <div className="modal__body">
+                <div style={{ marginBottom: '1rem', fontSize: '0.9rem', color: 'var(--admin-text-secondary)', lineHeight: 1.6 }}>
+                  Archiving <strong style={{ color: 'var(--admin-text)' }}>{property.address}</strong> will:
+                </div>
+                <div style={{ background: 'var(--admin-bg)', borderRadius: 8, padding: '1rem', marginBottom: '1rem', fontSize: '0.85rem', lineHeight: 1.7, color: 'var(--admin-text-secondary)' }}>
+                  • Remove the hero photo and gallery link (to save space)<br/>
+                  • Hide the property from the client portal<br/>
+                  • Keep all activity data, marketing, and history<br/>
+                  • You can restore it anytime
+                </div>
+              </div>
+              <div className="modal__footer">
+                <button className="btn btn--ghost" onClick={() => setShowArchiveConfirm(false)}>Cancel</button>
+                <button className="btn btn--primary" onClick={handleArchive} disabled={actionLoading}>
+                  <Archive size={14} /> {actionLoading ? 'Archiving...' : 'Archive Property'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── Delete Confirmation Modal ──────────────────────────────────── */}
+        {showDeleteConfirm && (
+          <div className="modal-overlay" onClick={() => { setShowDeleteConfirm(false); setDeleteTyped(''); }}>
+            <div className="modal" onClick={e => e.stopPropagation()}>
+              <div className="modal__header">
+                <h3 className="modal__title" style={{ color: '#d32f2f' }}>Permanently Delete Property</h3>
+                <button className="modal__close" onClick={() => { setShowDeleteConfirm(false); setDeleteTyped(''); }}><X size={18} /></button>
+              </div>
+              <div className="modal__body">
+                <div style={{ background: '#fff3f3', border: '1px solid #ffcdd2', borderRadius: 8, padding: '1rem', marginBottom: '1rem', fontSize: '0.85rem', lineHeight: 1.6, color: '#c62828' }}>
+                  <strong>This action cannot be undone.</strong> Deleting this property will permanently remove all associated data including activities, marketing items, photos, and client access records.
+                </div>
+                <div style={{ fontSize: '0.9rem', color: 'var(--admin-text-secondary)', marginBottom: '0.75rem' }}>
+                  Type <strong style={{ fontFamily: 'JetBrains Mono', color: '#d32f2f' }}>DELETE</strong> to confirm:
+                </div>
+                <input
+                  className="form-input"
+                  value={deleteTyped}
+                  onChange={e => setDeleteTyped(e.target.value)}
+                  placeholder="Type DELETE"
+                  style={{ fontFamily: 'JetBrains Mono', textAlign: 'center' }}
+                  autoFocus
+                />
+              </div>
+              <div className="modal__footer">
+                <button className="btn btn--ghost" onClick={() => { setShowDeleteConfirm(false); setDeleteTyped(''); }}>Cancel</button>
+                <button 
+                  className="btn" 
+                  style={{ background: deleteTyped === 'DELETE' ? '#d32f2f' : '#ccc', color: 'white', border: 'none', cursor: deleteTyped === 'DELETE' ? 'pointer' : 'not-allowed' }}
+                  onClick={handleDelete} 
+                  disabled={deleteTyped !== 'DELETE' || actionLoading}
+                >
+                  <Trash2 size={14} /> {actionLoading ? 'Deleting...' : 'Delete Forever'}
+                </button>
+              </div>
+            </div>
+          </div>
         )}
       </div>
     </div>

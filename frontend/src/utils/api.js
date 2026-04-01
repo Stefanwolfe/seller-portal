@@ -122,6 +122,14 @@ class ApiClient {
     return this.request(`/properties/${id}`, { method: 'DELETE' });
   }
 
+  archiveProperty(id) {
+    return this.request(`/properties/${id}/archive`, { method: 'PUT' });
+  }
+
+  unarchiveProperty(id) {
+    return this.request(`/properties/${id}/unarchive`, { method: 'PUT' });
+  }
+
   // Photos
   uploadPhotos(propertyId, files) {
     const formData = new FormData();

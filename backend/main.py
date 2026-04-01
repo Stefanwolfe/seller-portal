@@ -93,6 +93,8 @@ class Property(Base):
     description = Column(Text)
     hero_photo_url = Column(String(500))
     gallery_url = Column(String(500))
+    is_archived = Column(Boolean, default=False)
+    archived_at = Column(DateTime)
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # Relationships
@@ -445,6 +447,21 @@ async def lifespan(app: FastAPI):
             conn.commit()
         except Exception:
             conn.rollback()
+    # Migrate: add is_archived and archived_at columns
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE properties ADD COLUMN is_archived BOOLEAN DEFAULT FALSE"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE properties ADD COLUMN archived_at TIMESTAMP"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    # Migrate: create invite_tokens and password_reset_tokens tables
+    Base.metadata.create_all(bind=engine)
     # Create upload directory
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(os.path.join(settings.upload_dir, "photos"), exist_ok=True)
@@ -755,18 +772,27 @@ async def get_me(current_user: User = Depends(get_current_user)):
 @app.get("/api/properties")
 async def list_properties(
     status: Optional[str] = None,
+    include_archived: bool = False,
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
     if current_user.role == "admin":
         query = db.query(Property)
+        if not include_archived:
+            query = query.filter((Property.is_archived == False) | (Property.is_archived == None))
         if status:
-            query = query.filter(Property.status == status)
+            if status == "Archived":
+                query = db.query(Property).filter(Property.is_archived == True)
+            else:
+                query = query.filter(Property.status == status)
         properties = query.order_by(Property.created_at.desc()).all()
     else:
-        # Client: only show their properties
+        # Client: only show their non-archived properties
         property_ids = [pa.property_id for pa in current_user.property_accesses]
-        query = db.query(Property).filter(Property.id.in_(property_ids))
+        query = db.query(Property).filter(
+            Property.id.in_(property_ids),
+            (Property.is_archived == False) | (Property.is_archived == None)
+        )
         if status:
             query = query.filter(Property.status == status)
         properties = query.all()
@@ -809,7 +835,8 @@ async def list_properties(
             "total_open_house": total_open_house,
             "pending_approval": pending_approval,
             "created_at": p.created_at.isoformat(),
-            "photo_count": len(p.photos)
+            "photo_count": len(p.photos),
+            "is_archived": p.is_archived or False
         })
     return results
 
@@ -858,6 +885,8 @@ async def get_property(property_id: int, current_user: User = Depends(get_curren
         "description": prop.description,
         "hero_photo_url": prop.hero_photo_url,
         "gallery_url": prop.gallery_url,
+        "is_archived": prop.is_archived or False,
+        "archived_at": prop.archived_at.isoformat() if prop.archived_at else None,
         "days_on_market": days_on_market,
         "photos": photos
     }
@@ -877,9 +906,56 @@ async def delete_property(property_id: int, admin: User = Depends(require_admin)
     db_prop = db.query(Property).filter(Property.id == property_id).first()
     if not db_prop:
         raise HTTPException(status_code=404, detail="Property not found")
+    # Delete uploaded photo files from disk
+    for photo in db_prop.photos:
+        file_path = os.path.join(".", photo.url.lstrip("/")) if photo.url else None
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+    # Delete any invite tokens for this property
+    db.query(InviteToken).filter(InviteToken.property_id == property_id).delete()
+    # Cascade will handle activities, photos, marketing, property_accesses
     db.delete(db_prop)
     db.commit()
-    return {"message": "Property deleted"}
+    return {"message": "Property and all associated data permanently deleted"}
+
+
+@app.put("/api/properties/{property_id}/archive")
+async def archive_property(property_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    db_prop = db.query(Property).filter(Property.id == property_id).first()
+    if not db_prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    # Delete hero photo files from disk to save space
+    for photo in db_prop.photos:
+        file_path = os.path.join(".", photo.url.lstrip("/")) if photo.url else None
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except OSError:
+                pass
+    # Remove photos from database
+    for photo in list(db_prop.photos):
+        db.delete(photo)
+    # Clear hero photo URL and gallery link
+    db_prop.hero_photo_url = None
+    db_prop.gallery_url = None
+    db_prop.is_archived = True
+    db_prop.archived_at = datetime.utcnow()
+    db.commit()
+    return {"message": "Property archived. Photos and gallery link removed."}
+
+
+@app.put("/api/properties/{property_id}/unarchive")
+async def unarchive_property(property_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    db_prop = db.query(Property).filter(Property.id == property_id).first()
+    if not db_prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    db_prop.is_archived = False
+    db_prop.archived_at = None
+    db.commit()
+    return {"message": "Property restored. You can re-upload photos and set a gallery URL."}
 
 
 # ─── Photo Upload Routes ─────────────────────────────────────────────────────

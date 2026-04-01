@@ -14,7 +14,14 @@ export default function AdminProperties() {
   const [saving, setSaving] = useState(false)
   const navigate = useNavigate()
 
-  const load = () => api.getProperties(statusFilter || undefined).then(setProperties)
+  const load = () => {
+    const params = statusFilter || undefined
+    // If filtering for archived, we need to pass include_archived
+    if (statusFilter === 'Archived') {
+      return api.request(`/properties?status=Archived&include_archived=true`).then(setProperties)
+    }
+    return api.getProperties(params).then(setProperties)
+  }
   useEffect(() => { load() }, [statusFilter])
 
   const filtered = properties.filter(p =>
@@ -65,6 +72,7 @@ export default function AdminProperties() {
             <option value="Pending">Pending</option>
             <option value="Coming Soon">Coming Soon</option>
             <option value="Sold">Sold</option>
+            <option value="Archived">Archived</option>
           </select>
         </div>
 
@@ -72,7 +80,7 @@ export default function AdminProperties() {
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))', gap: '1rem' }}>
           {filtered.map(p => (
             <Link key={p.id} to={`/admin/properties/${p.id}`} style={{ textDecoration: 'none', color: 'inherit' }}>
-              <div className="admin-card" style={{ cursor: 'pointer', transition: 'border-color 0.15s' }}
+              <div className="admin-card" style={{ cursor: 'pointer', transition: 'border-color 0.15s', opacity: p.is_archived ? 0.6 : 1 }}
                 onMouseOver={e => e.currentTarget.style.borderColor = 'var(--admin-gold)'}
                 onMouseOut={e => e.currentTarget.style.borderColor = 'var(--admin-border)'}
               >
@@ -83,7 +91,7 @@ export default function AdminProperties() {
                 )}
                 <div style={{ fontWeight: 500, marginBottom: 4 }}>{p.address}</div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <span className={`badge ${p.status === 'Active' ? 'badge--approved' : p.status === 'Pending' ? 'badge--pending' : 'badge--pushed'}`}>{p.status}</span>
+                  <span className={`badge ${p.is_archived ? 'badge--archived' : p.status === 'Active' ? 'badge--approved' : p.status === 'Pending' ? 'badge--pending' : 'badge--pushed'}`}>{p.is_archived ? 'Archived' : p.status}</span>
                   <span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.85rem', color: 'var(--admin-gold)' }}>
                     {p.list_price ? `$${Number(p.list_price).toLocaleString()}` : ''}
                   </span>
