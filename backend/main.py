@@ -11,6 +11,7 @@ from collections import defaultdict
 
 from fastapi import FastAPI, Depends, HTTPException, status, UploadFile, File, Form, Query, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.gzip import GZipMiddleware
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import JSONResponse
@@ -711,6 +712,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(GZipMiddleware, minimum_size=500)  # Compress responses > 500 bytes
 
 # Serve uploaded photos
 os.makedirs("./uploads/photos", exist_ok=True)
@@ -2317,15 +2319,19 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
 static_dir = os.path.join(os.path.dirname(__file__), "static")
 if os.path.exists(static_dir):
     from starlette.responses import FileResponse
+    import mimetypes
 
     @app.get("/{full_path:path}")
     async def serve_frontend(full_path: str):
-        # Try to serve the requested file from static
         file_path = os.path.join(static_dir, full_path)
         if os.path.isfile(file_path):
+            # Hashed assets (JS/CSS in assets/) — cache for 1 year
+            if "/assets/" in full_path:
+                media_type = mimetypes.guess_type(file_path)[0]
+                return FileResponse(file_path, media_type=media_type, headers={"Cache-Control": "public, max-age=31536000, immutable"})
             return FileResponse(file_path)
-        # Fall back to index.html for React Router
-        return FileResponse(os.path.join(static_dir, "index.html"))
+        # Fall back to index.html for React Router (no cache so updates are instant)
+        return FileResponse(os.path.join(static_dir, "index.html"), headers={"Cache-Control": "no-cache"})
 
 
 if __name__ == "__main__":
