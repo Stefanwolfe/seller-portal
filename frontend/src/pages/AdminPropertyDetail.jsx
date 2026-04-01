@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { AdminNav } from './AdminDashboard'
 import api from '../utils/api'
-import { Upload, Trash2, Plus, Check, Send, X, ArrowLeft, Edit3, Image, Calendar, Megaphone, Users, Archive, RotateCcw, ListChecks, Flag } from 'lucide-react'
+import { Upload, Trash2, Plus, Check, Send, X, ArrowLeft, Edit3, Image, Calendar, Megaphone, Users, Archive, RotateCcw, ListChecks, Flag, FileText, Receipt, Clock, ChevronDown, Paperclip } from 'lucide-react'
 
 export default function AdminPropertyDetail() {
   const { id } = useParams()
@@ -64,6 +64,19 @@ export default function AdminPropertyDetail() {
     { value: 'custom', label: 'Custom Milestone' },
   ]
 
+  // Custom sections
+  const [showCustomSectionForm, setShowCustomSectionForm] = useState(false)
+  const [customSectionForm, setCustomSectionForm] = useState({ title: '', section_type: 'checklist', phase: 'pre_market', date_value: '' })
+  const [newItemText, setNewItemText] = useState({})
+
+  // Receipt upload
+  const receiptRef = useRef()
+  const [uploadingReceipt, setUploadingReceipt] = useState(null)
+
+  // Pending dates editing
+  const [pendingDatesLocal, setPendingDatesLocal] = useState({})
+  const [savingDates, setSavingDates] = useState(false)
+
   const loadData = useCallback(async () => {
     try {
       const [prop, acts, mkts, cls] = await Promise.all([
@@ -84,6 +97,18 @@ export default function AdminPropertyDetail() {
   }, [id])
 
   useEffect(() => { loadData() }, [loadData])
+
+  // Sync pending dates from property
+  useEffect(() => {
+    if (property) {
+      setPendingDatesLocal({
+        mutual_date: property.mutual_date || '',
+        inspection_deadline: property.inspection_deadline || '',
+        earnest_money_date: property.earnest_money_date || '',
+        closing_date: property.closing_date || '',
+      })
+    }
+  }, [property?.id, property?.mutual_date, property?.inspection_deadline, property?.earnest_money_date, property?.closing_date])
 
   const handlePhotoUpload = async (e) => {
     const files = Array.from(e.target.files)
@@ -267,6 +292,81 @@ export default function AdminPropertyDetail() {
   const handleDeleteMilestone = async (milestoneId) => {
     await api.deleteMilestone(milestoneId)
     loadData()
+  }
+
+  // ─── Pending Dates ────────────────────────────────────────────────────
+  const handleSavePendingDates = async () => {
+    setSavingDates(true)
+    try {
+      const payload = {}
+      Object.keys(pendingDatesLocal).forEach(k => {
+        payload[k] = pendingDatesLocal[k] || null
+      })
+      await api.updatePendingDates(id, payload)
+      loadData()
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setSavingDates(false)
+    }
+  }
+
+  const handleToggleInspectionResponse = async (received) => {
+    try {
+      await api.toggleInspectionResponse(id, received, property.inspection_response_days || 3)
+      loadData()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
+  // ─── Custom Sections ──────────────────────────────────────────────────
+  const handleCreateCustomSection = async (e) => {
+    e.preventDefault()
+    const data = { ...customSectionForm }
+    if (data.section_type !== 'date') delete data.date_value
+    else if (data.date_value === '') delete data.date_value
+    await api.createCustomSection(id, data)
+    setShowCustomSectionForm(false)
+    setCustomSectionForm({ title: '', section_type: 'checklist', phase: property.phase || 'pre_market', date_value: '' })
+    loadData()
+  }
+
+  const handleDeleteCustomSection = async (sectionId) => {
+    if (!confirm('Delete this section and all its items?')) return
+    await api.deleteCustomSection(sectionId)
+    loadData()
+  }
+
+  const handleCreateSectionItem = async (sectionId) => {
+    const text = newItemText[sectionId]?.trim()
+    if (!text) return
+    await api.createSectionItem(sectionId, text)
+    setNewItemText(prev => ({ ...prev, [sectionId]: '' }))
+    loadData()
+  }
+
+  const handleToggleSectionItem = async (itemId, currentStatus) => {
+    await api.updateSectionItem(itemId, currentStatus === 'complete' ? 'pending' : 'complete')
+    loadData()
+  }
+
+  const handleDeleteSectionItem = async (itemId) => {
+    await api.deleteSectionItem(itemId)
+    loadData()
+  }
+
+  // ─── Receipt Upload ───────────────────────────────────────────────────
+  const handleReceiptUpload = async (taskId, file) => {
+    setUploadingReceipt(taskId)
+    try {
+      await api.uploadReceipt(taskId, file)
+      loadData()
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setUploadingReceipt(null)
+    }
   }
 
   if (loading || !property) {
@@ -746,43 +846,100 @@ export default function AdminPropertyDetail() {
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
                   {property.pre_market_tasks.map(t => (
                     <div key={t.id} style={{
-                      display: 'flex', alignItems: 'center', gap: '0.75rem',
                       padding: '10px 12px', background: 'var(--admin-bg)', borderRadius: 8,
                       opacity: t.status === 'complete' ? 0.6 : 1
                     }}>
-                      <button
-                        onClick={() => handleUpdateTaskStatus(t.id, t.status === 'complete' ? 'pending' : 'complete')}
-                        style={{
-                          width: 22, height: 22, borderRadius: 6, border: '2px solid',
-                          borderColor: t.status === 'complete' ? 'var(--admin-success)' : 'var(--admin-border)',
-                          background: t.status === 'complete' ? 'var(--admin-success)' : 'transparent',
-                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                        }}
-                      >
-                        {t.status === 'complete' && <Check size={14} color="#fff" />}
-                      </button>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 500, fontSize: '0.9rem', textDecoration: t.status === 'complete' ? 'line-through' : 'none' }}>{t.title}</div>
-                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: 2 }}>
-                          {t.scheduled_date && <span style={{ fontSize: '0.78rem', color: 'var(--admin-text-muted)', fontFamily: 'JetBrains Mono' }}>{new Date(t.scheduled_date + 'T00:00').toLocaleDateString()}</span>}
-                          {t.notes && <span style={{ fontSize: '0.78rem', color: 'var(--admin-text-muted)' }}>{t.notes}</span>}
-                        </div>
-                      </div>
-                      {t.status !== 'complete' && (
-                        <select
-                          value={t.status}
-                          onChange={e => handleUpdateTaskStatus(t.id, e.target.value)}
-                          style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: 4, border: '1px solid var(--admin-border)', background: 'var(--admin-surface)', color: 'var(--admin-text-secondary)', cursor: 'pointer' }}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                        <button
+                          onClick={() => handleUpdateTaskStatus(t.id, t.status === 'complete' ? 'pending' : 'complete')}
+                          style={{
+                            width: 22, height: 22, borderRadius: 6, border: '2px solid',
+                            borderColor: t.status === 'complete' ? 'var(--admin-success)' : 'var(--admin-border)',
+                            background: t.status === 'complete' ? 'var(--admin-success)' : 'transparent',
+                            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                          }}
                         >
-                          <option value="pending">Pending</option>
-                          <option value="scheduled">Scheduled</option>
-                          <option value="in_progress">In Progress</option>
-                          <option value="complete">Complete</option>
-                        </select>
+                          {t.status === 'complete' && <Check size={14} color="#fff" />}
+                        </button>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontWeight: 500, fontSize: '0.9rem', textDecoration: t.status === 'complete' ? 'line-through' : 'none' }}>{t.title}</div>
+                          <div style={{ display: 'flex', gap: '0.75rem', marginTop: 2, flexWrap: 'wrap', alignItems: 'center' }}>
+                            {t.scheduled_date && <span style={{ fontSize: '0.78rem', color: 'var(--admin-text-muted)', fontFamily: 'JetBrains Mono' }}>{new Date(t.scheduled_date + 'T00:00').toLocaleDateString()}</span>}
+                            {t.notes && <span style={{ fontSize: '0.78rem', color: 'var(--admin-text-muted)' }}>{t.notes}</span>}
+                          </div>
+                        </div>
+                        {/* Receipt upload */}
+                        {(t.category === 'inspection_item' || t.task_type === 'inspection') && (
+                          <button
+                            onClick={() => {
+                              const inp = document.createElement('input')
+                              inp.type = 'file'
+                              inp.accept = 'image/*,.pdf'
+                              inp.onchange = (e) => {
+                                if (e.target.files[0]) handleReceiptUpload(t.id, e.target.files[0])
+                              }
+                              inp.click()
+                            }}
+                            disabled={uploadingReceipt === t.id}
+                            style={{
+                              fontSize: '0.72rem', padding: '3px 8px', borderRadius: 4,
+                              border: '1px solid var(--admin-border)', background: t.receipt_url ? 'rgba(107,175,123,0.1)' : 'var(--admin-surface)',
+                              color: t.receipt_url ? 'var(--admin-success)' : 'var(--admin-text-muted)', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: 4
+                            }}
+                            title={t.receipt_url ? 'Replace receipt' : 'Upload receipt'}
+                          >
+                            <Paperclip size={11} /> {uploadingReceipt === t.id ? '...' : t.receipt_url ? 'Receipt' : 'Receipt'}
+                          </button>
+                        )}
+                        {/* Any task can attach a receipt via right-click-style button */}
+                        {t.category !== 'inspection_item' && t.task_type !== 'inspection' && (
+                          <button
+                            onClick={() => {
+                              const inp = document.createElement('input')
+                              inp.type = 'file'
+                              inp.accept = 'image/*,.pdf'
+                              inp.onchange = (e) => {
+                                if (e.target.files[0]) handleReceiptUpload(t.id, e.target.files[0])
+                              }
+                              inp.click()
+                            }}
+                            disabled={uploadingReceipt === t.id}
+                            style={{
+                              fontSize: '0.72rem', padding: '3px 8px', borderRadius: 4,
+                              border: '1px solid var(--admin-border)', background: t.receipt_url ? 'rgba(107,175,123,0.1)' : 'var(--admin-surface)',
+                              color: t.receipt_url ? 'var(--admin-success)' : 'var(--admin-text-muted)', cursor: 'pointer',
+                              display: 'flex', alignItems: 'center', gap: 4, opacity: t.receipt_url ? 1 : 0.6
+                            }}
+                            title={t.receipt_url ? 'Replace receipt' : 'Attach receipt'}
+                          >
+                            <Paperclip size={11} /> {uploadingReceipt === t.id ? '...' : t.receipt_url ? 'Receipt' : 'Attach'}
+                          </button>
+                        )}
+                        {t.status !== 'complete' && (
+                          <select
+                            value={t.status}
+                            onChange={e => handleUpdateTaskStatus(t.id, e.target.value)}
+                            style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: 4, border: '1px solid var(--admin-border)', background: 'var(--admin-surface)', color: 'var(--admin-text-secondary)', cursor: 'pointer' }}
+                          >
+                            <option value="pending">Pending</option>
+                            <option value="scheduled">Scheduled</option>
+                            <option value="in_progress">In Progress</option>
+                            <option value="complete">Complete</option>
+                          </select>
+                        )}
+                        <button onClick={() => handleDeleteTask(t.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 4 }}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                      {/* Receipt preview */}
+                      {t.receipt_url && (
+                        <div style={{ marginTop: 6, marginLeft: 34, display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                          <a href={t.receipt_url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.78rem', color: 'var(--admin-gold)', display: 'flex', alignItems: 'center', gap: 4 }}>
+                            <FileText size={12} /> View receipt →
+                          </a>
+                        </div>
                       )}
-                      <button onClick={() => handleDeleteTask(t.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 4 }}>
-                        <Trash2 size={14} />
-                      </button>
                     </div>
                   ))}
                 </div>
@@ -812,13 +969,170 @@ export default function AdminPropertyDetail() {
                 </span>
               </div>
             </div>
+
+            {/* ─── Custom Sections (Pre-Market) ─────────────────────────────── */}
+            <div className="admin-card" style={{ marginTop: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem' }}>Custom Sections</h3>
+                <button className="btn btn--ghost btn--small" onClick={() => { setCustomSectionForm({ title: '', section_type: 'checklist', phase: 'pre_market', date_value: '' }); setShowCustomSectionForm(!showCustomSectionForm) }}>
+                  <Plus size={12} /> Add Section
+                </button>
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)', marginBottom: '0.75rem' }}>
+                Add custom checklists or key dates that your client will see on their pre-market dashboard.
+              </p>
+
+              {showCustomSectionForm && customSectionForm.phase === 'pre_market' && (
+                <form onSubmit={handleCreateCustomSection} style={{ background: 'var(--admin-bg)', borderRadius: 8, padding: '12px', marginBottom: '0.75rem', border: '1px solid var(--admin-gold-dim)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <input className="form-input" value={customSectionForm.title} onChange={e => setCustomSectionForm({...customSectionForm, title: e.target.value})} required placeholder="Section title" style={{ fontSize: '0.85rem' }} />
+                    <select className="form-select" value={customSectionForm.section_type} onChange={e => setCustomSectionForm({...customSectionForm, section_type: e.target.value})} style={{ fontSize: '0.85rem', width: 'auto' }}>
+                      <option value="checklist">Checklist</option>
+                      <option value="date">Key Date</option>
+                    </select>
+                  </div>
+                  {customSectionForm.section_type === 'date' && (
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <input className="form-input" type="date" value={customSectionForm.date_value} onChange={e => setCustomSectionForm({...customSectionForm, date_value: e.target.value})} style={{ fontSize: '0.85rem', maxWidth: 200 }} />
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button type="submit" className="btn btn--primary btn--small">Create</button>
+                    <button type="button" className="btn btn--ghost btn--small" onClick={() => setShowCustomSectionForm(false)}>Cancel</button>
+                  </div>
+                </form>
+              )}
+
+              {(property.custom_sections || []).filter(s => s.phase === 'pre_market').map(section => (
+                <div key={section.id} style={{ background: 'var(--admin-bg)', borderRadius: 8, padding: '12px', marginBottom: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{section.title}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--admin-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{section.section_type}</span>
+                      <button onClick={() => handleDeleteCustomSection(section.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 2 }}>
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                  {section.section_type === 'date' ? (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--admin-text-secondary)', fontFamily: 'JetBrains Mono' }}>
+                      {section.date_value ? new Date(section.date_value + 'T00:00').toLocaleDateString() : 'No date set'}
+                    </div>
+                  ) : (
+                    <>
+                      {(section.items || []).map(item => (
+                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '4px 0' }}>
+                          <button
+                            onClick={() => handleToggleSectionItem(item.id, item.status)}
+                            style={{
+                              width: 18, height: 18, borderRadius: 4, border: '2px solid',
+                              borderColor: item.status === 'complete' ? 'var(--admin-success)' : 'var(--admin-border)',
+                              background: item.status === 'complete' ? 'var(--admin-success)' : 'transparent',
+                              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                            }}
+                          >
+                            {item.status === 'complete' && <Check size={10} color="#fff" />}
+                          </button>
+                          <span style={{ flex: 1, fontSize: '0.85rem', textDecoration: item.status === 'complete' ? 'line-through' : 'none', opacity: item.status === 'complete' ? 0.5 : 1 }}>{item.title}</span>
+                          <button onClick={() => handleDeleteSectionItem(item.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 2, opacity: 0.5 }}>
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: 4 }}>
+                        <input
+                          className="form-input"
+                          value={newItemText[section.id] || ''}
+                          onChange={e => setNewItemText(prev => ({ ...prev, [section.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCreateSectionItem(section.id) } }}
+                          placeholder="Add item..."
+                          style={{ fontSize: '0.82rem', padding: '4px 8px' }}
+                        />
+                        <button className="btn btn--ghost btn--small" onClick={() => handleCreateSectionItem(section.id)} style={{ padding: '4px 8px' }}>
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+              {(property.custom_sections || []).filter(s => s.phase === 'pre_market').length === 0 && !showCustomSectionForm && (
+                <div style={{ fontSize: '0.82rem', color: 'var(--admin-text-muted)', padding: '0.5rem 0' }}>
+                  No custom sections yet.
+                </div>
+              )}
+            </div>
           </>
         )}
 
         {/* ─── Pending Milestones Tab ─────────────────────────────────────── */}
         {tab === 'milestones' && (
           <>
-            <button className="btn btn--primary" style={{ marginBottom: '1rem' }} onClick={() => setShowMilestoneForm(true)}><Plus size={14} /> Add Milestone</button>
+            {/* ─── Key Transaction Dates ──────────────────────────────────── */}
+            <div className="admin-card" style={{ marginBottom: '1rem' }}>
+              <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem', marginBottom: '0.75rem' }}>Key Transaction Dates</h3>
+              <p style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)', marginBottom: '1rem' }}>
+                Structured contract dates — these power the client's closing countdown and timeline.
+              </p>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Mutual Acceptance</label>
+                  <input className="form-input" type="date" value={pendingDatesLocal.mutual_date || ''} onChange={e => setPendingDatesLocal(prev => ({...prev, mutual_date: e.target.value}))} />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Inspection Deadline</label>
+                  <input className="form-input" type="date" value={pendingDatesLocal.inspection_deadline || ''} onChange={e => setPendingDatesLocal(prev => ({...prev, inspection_deadline: e.target.value}))} />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Earnest Money Due</label>
+                  <input className="form-input" type="date" value={pendingDatesLocal.earnest_money_date || ''} onChange={e => setPendingDatesLocal(prev => ({...prev, earnest_money_date: e.target.value}))} />
+                </div>
+                <div className="form-group" style={{ margin: 0 }}>
+                  <label className="form-label">Closing Date</label>
+                  <input className="form-input" type="date" value={pendingDatesLocal.closing_date || ''} onChange={e => setPendingDatesLocal(prev => ({...prev, closing_date: e.target.value}))} />
+                </div>
+              </div>
+
+              {/* Inspection Response Toggle */}
+              <div style={{ background: 'var(--admin-bg)', borderRadius: 8, padding: '10px 12px', marginBottom: '0.75rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                  <div>
+                    <div style={{ fontWeight: 500, fontSize: '0.88rem' }}>Inspection Response Received</div>
+                    <div style={{ fontSize: '0.78rem', color: 'var(--admin-text-muted)', marginTop: 2 }}>
+                      {property.inspection_response_received
+                        ? `Response received — response deadline: ${property.inspection_response_date ? new Date(property.inspection_response_date + 'T00:00').toLocaleDateString() : 'calculating...'}`
+                        : `Toggle when the inspection response has been received (${property.inspection_response_days || 3}-day response period)`
+                      }
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => handleToggleInspectionResponse(!property.inspection_response_received)}
+                    style={{
+                      width: 44, height: 24, borderRadius: 12, border: 'none', cursor: 'pointer',
+                      background: property.inspection_response_received ? 'var(--admin-success)' : 'var(--admin-border)',
+                      position: 'relative', transition: 'background 0.2s', flexShrink: 0
+                    }}
+                  >
+                    <div style={{
+                      width: 18, height: 18, borderRadius: '50%', background: 'white',
+                      position: 'absolute', top: 3,
+                      left: property.inspection_response_received ? 23 : 3,
+                      transition: 'left 0.2s', boxShadow: '0 1px 3px rgba(0,0,0,0.2)'
+                    }} />
+                  </button>
+                </div>
+              </div>
+
+              <button className="btn btn--primary btn--small" onClick={handleSavePendingDates} disabled={savingDates}>
+                {savingDates ? 'Saving...' : 'Save Dates'}
+              </button>
+            </div>
+
+            {/* ─── Milestone Checklist ────────────────────────────────────── */}
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+              <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem' }}>Milestone Checklist</h3>
+              <button className="btn btn--primary btn--small" onClick={() => setShowMilestoneForm(true)}><Plus size={14} /> Add Milestone</button>
+            </div>
 
             {showMilestoneForm && (
               <div className="admin-card" style={{ marginBottom: '1rem', borderColor: 'var(--admin-gold)' }}>
@@ -914,6 +1228,99 @@ export default function AdminPropertyDetail() {
               ) : (
                 <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--admin-text-muted)' }}>
                   No milestones yet. Add contract dates so your clients can track their transaction progress.
+                </div>
+              )}
+            </div>
+
+            {/* ─── Custom Sections (Pending) ─────────────────────────────── */}
+            <div className="admin-card" style={{ marginTop: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem' }}>Custom Sections</h3>
+                <button className="btn btn--ghost btn--small" onClick={() => { setCustomSectionForm({ title: '', section_type: 'checklist', phase: 'pending', date_value: '' }); setShowCustomSectionForm(!showCustomSectionForm) }}>
+                  <Plus size={12} /> Add Section
+                </button>
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)', marginBottom: '0.75rem' }}>
+                Add custom checklists or key dates that your client will see on their pending dashboard.
+              </p>
+
+              {showCustomSectionForm && customSectionForm.phase === 'pending' && (
+                <form onSubmit={handleCreateCustomSection} style={{ background: 'var(--admin-bg)', borderRadius: 8, padding: '12px', marginBottom: '0.75rem', border: '1px solid var(--admin-gold-dim)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr auto', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <input className="form-input" value={customSectionForm.title} onChange={e => setCustomSectionForm({...customSectionForm, title: e.target.value})} required placeholder="Section title" style={{ fontSize: '0.85rem' }} />
+                    <select className="form-select" value={customSectionForm.section_type} onChange={e => setCustomSectionForm({...customSectionForm, section_type: e.target.value})} style={{ fontSize: '0.85rem', width: 'auto' }}>
+                      <option value="checklist">Checklist</option>
+                      <option value="date">Key Date</option>
+                    </select>
+                  </div>
+                  {customSectionForm.section_type === 'date' && (
+                    <div style={{ marginBottom: '0.5rem' }}>
+                      <input className="form-input" type="date" value={customSectionForm.date_value} onChange={e => setCustomSectionForm({...customSectionForm, date_value: e.target.value})} style={{ fontSize: '0.85rem', maxWidth: 200 }} />
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button type="submit" className="btn btn--primary btn--small">Create</button>
+                    <button type="button" className="btn btn--ghost btn--small" onClick={() => setShowCustomSectionForm(false)}>Cancel</button>
+                  </div>
+                </form>
+              )}
+
+              {(property.custom_sections || []).filter(s => s.phase === 'pending').map(section => (
+                <div key={section.id} style={{ background: 'var(--admin-bg)', borderRadius: 8, padding: '12px', marginBottom: '0.5rem' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <div style={{ fontWeight: 600, fontSize: '0.88rem' }}>{section.title}</div>
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '0.25rem' }}>
+                      <span style={{ fontSize: '0.7rem', color: 'var(--admin-text-muted)', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{section.section_type}</span>
+                      <button onClick={() => handleDeleteCustomSection(section.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 2 }}>
+                        <Trash2 size={12} />
+                      </button>
+                    </div>
+                  </div>
+                  {section.section_type === 'date' ? (
+                    <div style={{ fontSize: '0.85rem', color: 'var(--admin-text-secondary)', fontFamily: 'JetBrains Mono' }}>
+                      {section.date_value ? new Date(section.date_value + 'T00:00').toLocaleDateString() : 'No date set'}
+                    </div>
+                  ) : (
+                    <>
+                      {(section.items || []).map(item => (
+                        <div key={item.id} style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '4px 0' }}>
+                          <button
+                            onClick={() => handleToggleSectionItem(item.id, item.status)}
+                            style={{
+                              width: 18, height: 18, borderRadius: 4, border: '2px solid',
+                              borderColor: item.status === 'complete' ? 'var(--admin-success)' : 'var(--admin-border)',
+                              background: item.status === 'complete' ? 'var(--admin-success)' : 'transparent',
+                              cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                            }}
+                          >
+                            {item.status === 'complete' && <Check size={10} color="#fff" />}
+                          </button>
+                          <span style={{ flex: 1, fontSize: '0.85rem', textDecoration: item.status === 'complete' ? 'line-through' : 'none', opacity: item.status === 'complete' ? 0.5 : 1 }}>{item.title}</span>
+                          <button onClick={() => handleDeleteSectionItem(item.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 2, opacity: 0.5 }}>
+                            <X size={12} />
+                          </button>
+                        </div>
+                      ))}
+                      <div style={{ display: 'flex', gap: '0.5rem', marginTop: 4 }}>
+                        <input
+                          className="form-input"
+                          value={newItemText[section.id] || ''}
+                          onChange={e => setNewItemText(prev => ({ ...prev, [section.id]: e.target.value }))}
+                          onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); handleCreateSectionItem(section.id) } }}
+                          placeholder="Add item..."
+                          style={{ fontSize: '0.82rem', padding: '4px 8px' }}
+                        />
+                        <button className="btn btn--ghost btn--small" onClick={() => handleCreateSectionItem(section.id)} style={{ padding: '4px 8px' }}>
+                          <Plus size={12} />
+                        </button>
+                      </div>
+                    </>
+                  )}
+                </div>
+              ))}
+              {(property.custom_sections || []).filter(s => s.phase === 'pending').length === 0 && !showCustomSectionForm && (
+                <div style={{ fontSize: '0.82rem', color: 'var(--admin-text-muted)', padding: '0.5rem 0' }}>
+                  No custom sections yet.
                 </div>
               )}
             </div>

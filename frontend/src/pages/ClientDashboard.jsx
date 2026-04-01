@@ -272,6 +272,73 @@ export default function ClientDashboard() {
                     </div>
                   )}
                 </div>
+
+                {/* Custom Sections for Pre-Market */}
+                {(data.custom_sections || []).filter(s => s.phase === 'pre_market').length > 0 && (
+                  <div style={{ marginTop: '2rem' }}>
+                    {(data.custom_sections || []).filter(s => s.phase === 'pre_market').map(section => (
+                      <div key={section.id} style={{ marginBottom: '1.5rem' }}>
+                        <div className="section-header">
+                          <h2 className="section-title">{section.title}</h2>
+                        </div>
+                        {section.section_type === 'date' ? (
+                          <div style={{
+                            padding: '18px 22px', background: 'white', borderRadius: 10,
+                            border: '1px solid #F0F0EC', display: 'flex', alignItems: 'center', gap: '1rem'
+                          }}>
+                            <div style={{
+                              width: 40, height: 40, borderRadius: 10, background: 'rgba(184, 146, 106, 0.08)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                            }}>
+                              <Calendar size={20} color="#B8926A" />
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: '1.05rem', color: '#1A1A1A' }}>
+                                {section.date_value
+                                  ? new Date(section.date_value + 'T00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+                                  : 'Date to be confirmed'
+                                }
+                              </div>
+                              {section.date_value && (() => {
+                                const days = Math.ceil((new Date(section.date_value + 'T00:00') - new Date()) / 86400000)
+                                return days >= 0
+                                  ? <div style={{ fontSize: '0.82rem', color: '#9B9B9B', marginTop: 2 }}>{days} days away</div>
+                                  : <div style={{ fontSize: '0.82rem', color: '#C75B5B', marginTop: 2 }}>{Math.abs(days)} days ago</div>
+                              })()}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {(section.items || []).map(item => (
+                              <div key={item.id} style={{
+                                display: 'flex', alignItems: 'center', gap: '1rem',
+                                padding: '14px 18px', background: 'white', borderRadius: 10,
+                                border: '1px solid #F0F0EC',
+                                opacity: item.status === 'complete' ? 0.65 : 1
+                              }}>
+                                <div style={{
+                                  width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                                  border: item.status === 'complete' ? 'none' : '2px solid #E0DCD4',
+                                  background: item.status === 'complete' ? '#4A7C59' : 'transparent',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                  {item.status === 'complete' && <CheckCircle size={16} color="#fff" />}
+                                </div>
+                                <span style={{
+                                  fontSize: '0.92rem', color: '#1A1A1A',
+                                  textDecoration: item.status === 'complete' ? 'line-through' : 'none'
+                                }}>{item.title}</span>
+                              </div>
+                            ))}
+                            {(!section.items || section.items.length === 0) && (
+                              <div style={{ padding: '1rem', color: '#9B9B9B', fontSize: '0.88rem' }}>Items coming soon.</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
             )}
 
@@ -661,6 +728,124 @@ export default function ClientDashboard() {
                     </div>
                   )}
                 </div>
+
+                {/* Key Transaction Dates */}
+                {(data.property.mutual_date || data.property.inspection_deadline || data.property.earnest_money_date || data.property.closing_date) && (
+                  <div style={{ marginTop: '2rem' }}>
+                    <div className="section-header">
+                      <h2 className="section-title">Key Dates</h2>
+                    </div>
+                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                      {[
+                        { label: 'Mutual Acceptance', date: data.property.mutual_date },
+                        { label: 'Inspection Deadline', date: data.property.inspection_deadline },
+                        { label: 'Earnest Money Due', date: data.property.earnest_money_date },
+                        { label: 'Closing Date', date: data.property.closing_date },
+                      ].filter(d => d.date).map((d, i) => {
+                        const days = Math.ceil((new Date(d.date + 'T00:00') - new Date()) / 86400000)
+                        const isPast = days < 0
+                        return (
+                          <div key={i} style={{
+                            padding: '16px 18px', background: 'white', borderRadius: 10,
+                            border: '1px solid #F0F0EC'
+                          }}>
+                            <div style={{ fontSize: '0.78rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500, marginBottom: 4 }}>{d.label}</div>
+                            <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1A1A1A' }}>
+                              {new Date(d.date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </div>
+                            <div style={{ fontSize: '0.78rem', color: isPast ? '#C75B5B' : '#9B9B9B', marginTop: 2, fontFamily: 'JetBrains Mono, monospace' }}>
+                              {isPast ? `${Math.abs(days)}d ago` : `${days}d away`}
+                            </div>
+                          </div>
+                        )
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {/* Inspection Response Status */}
+                {data.property.inspection_response_received && data.property.inspection_response_date && (
+                  <div style={{
+                    marginTop: '1rem', padding: '14px 18px', background: 'rgba(74, 124, 89, 0.06)',
+                    borderRadius: 10, border: '1px solid rgba(74, 124, 89, 0.15)',
+                    display: 'flex', alignItems: 'center', gap: '0.75rem'
+                  }}>
+                    <CheckCircle size={18} color="#4A7C59" />
+                    <div>
+                      <div style={{ fontWeight: 500, fontSize: '0.9rem', color: '#1A1A1A' }}>Inspection Response Received</div>
+                      <div style={{ fontSize: '0.8rem', color: '#9B9B9B', marginTop: 2 }}>
+                        Response deadline: {new Date(data.property.inspection_response_date + 'T00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Custom Sections for Pending */}
+                {(data.custom_sections || []).filter(s => s.phase === 'pending').length > 0 && (
+                  <div style={{ marginTop: '2rem' }}>
+                    {(data.custom_sections || []).filter(s => s.phase === 'pending').map(section => (
+                      <div key={section.id} style={{ marginBottom: '1.5rem' }}>
+                        <div className="section-header">
+                          <h2 className="section-title">{section.title}</h2>
+                        </div>
+                        {section.section_type === 'date' ? (
+                          <div style={{
+                            padding: '18px 22px', background: 'white', borderRadius: 10,
+                            border: '1px solid #F0F0EC', display: 'flex', alignItems: 'center', gap: '1rem'
+                          }}>
+                            <div style={{
+                              width: 40, height: 40, borderRadius: 10, background: 'rgba(127, 119, 221, 0.08)',
+                              display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                            }}>
+                              <Calendar size={20} color="#7F77DD" />
+                            </div>
+                            <div>
+                              <div style={{ fontWeight: 600, fontSize: '1.05rem', color: '#1A1A1A' }}>
+                                {section.date_value
+                                  ? new Date(section.date_value + 'T00:00').toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })
+                                  : 'Date to be confirmed'
+                                }
+                              </div>
+                              {section.date_value && (() => {
+                                const days = Math.ceil((new Date(section.date_value + 'T00:00') - new Date()) / 86400000)
+                                return days >= 0
+                                  ? <div style={{ fontSize: '0.82rem', color: '#9B9B9B', marginTop: 2 }}>{days} days away</div>
+                                  : <div style={{ fontSize: '0.82rem', color: '#C75B5B', marginTop: 2 }}>{Math.abs(days)} days ago</div>
+                              })()}
+                            </div>
+                          </div>
+                        ) : (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                            {(section.items || []).map(item => (
+                              <div key={item.id} style={{
+                                display: 'flex', alignItems: 'center', gap: '1rem',
+                                padding: '14px 18px', background: 'white', borderRadius: 10,
+                                border: '1px solid #F0F0EC',
+                                opacity: item.status === 'complete' ? 0.65 : 1
+                              }}>
+                                <div style={{
+                                  width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                                  border: item.status === 'complete' ? 'none' : '2px solid #E0DCD4',
+                                  background: item.status === 'complete' ? '#4A7C59' : 'transparent',
+                                  display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                }}>
+                                  {item.status === 'complete' && <CheckCircle size={16} color="#fff" />}
+                                </div>
+                                <span style={{
+                                  fontSize: '0.92rem', color: '#1A1A1A',
+                                  textDecoration: item.status === 'complete' ? 'line-through' : 'none'
+                                }}>{item.title}</span>
+                              </div>
+                            ))}
+                            {(!section.items || section.items.length === 0) && (
+                              <div style={{ padding: '1rem', color: '#9B9B9B', fontSize: '0.88rem' }}>Items coming soon.</div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </>
             )}
           </>
