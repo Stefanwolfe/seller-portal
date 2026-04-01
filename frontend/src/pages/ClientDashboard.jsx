@@ -177,7 +177,7 @@ export default function ClientDashboard() {
             {/* ─── PRE-MARKET PHASE ──────────────────────────────────────────── */}
             {(data.property.phase === 'pre_market') && (
               <>
-                {/* Progress Summary */}
+                {/* Progress Summary — Compact */}
                 {(() => {
                   const tasks = data.pre_market_tasks || []
                   const completed = tasks.filter(t => t.status === 'complete').length
@@ -187,35 +187,45 @@ export default function ClientDashboard() {
                   const daysUntil = targetDate ? Math.max(0, Math.ceil((new Date(targetDate + 'T00:00') - new Date()) / 86400000)) : null
 
                   return (
-                    <div style={{ marginBottom: '2rem' }}>
-                      <div className="stats-grid">
-                        <div className="stat-card">
-                          <div className="stat-card__label">Preparation Progress</div>
-                          <div className="stat-card__value">{pct}%</div>
-                          <div className="stat-card__sub">{completed} of {total} tasks complete</div>
+                    <div style={{ marginBottom: '1.5rem' }}>
+                      <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap' }}>
+                        <div style={{
+                          flex: 1, minWidth: 120, padding: '12px 16px', background: 'white', borderRadius: 10,
+                          border: '1px solid #F0F0EC'
+                        }}>
+                          <div style={{ fontSize: '0.72rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500 }}>Progress</div>
+                          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1A1A1A', fontFamily: 'Cormorant Garamond, serif' }}>{pct}%</div>
+                          <div style={{ fontSize: '0.75rem', color: '#9B9B9B' }}>{completed} of {total} complete</div>
                         </div>
-                        <div className="stat-card">
-                          <div className="stat-card__label">Tasks Remaining</div>
-                          <div className="stat-card__value">{total - completed}</div>
+                        <div style={{
+                          flex: 1, minWidth: 120, padding: '12px 16px', background: 'white', borderRadius: 10,
+                          border: '1px solid #F0F0EC'
+                        }}>
+                          <div style={{ fontSize: '0.72rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500 }}>Remaining</div>
+                          <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1A1A1A', fontFamily: 'Cormorant Garamond, serif' }}>{total - completed}</div>
+                          <div style={{ fontSize: '0.75rem', color: '#9B9B9B' }}>tasks left</div>
                         </div>
                         {daysUntil !== null && (
-                          <div className="stat-card">
-                            <div className="stat-card__label">Target Go-Live</div>
-                            <div className="stat-card__value">{daysUntil}</div>
-                            <div className="stat-card__sub">days until listing</div>
+                          <div style={{
+                            flex: 1, minWidth: 120, padding: '12px 16px', background: 'white', borderRadius: 10,
+                            border: '1px solid #F0F0EC'
+                          }}>
+                            <div style={{ fontSize: '0.72rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500 }}>Go-Live</div>
+                            <div style={{ fontSize: '1.4rem', fontWeight: 700, color: '#1A1A1A', fontFamily: 'Cormorant Garamond, serif' }}>{daysUntil}</div>
+                            <div style={{ fontSize: '0.75rem', color: '#9B9B9B' }}>days until listing</div>
                           </div>
                         )}
                       </div>
 
                       {/* Progress bar */}
                       {total > 0 && (
-                        <div style={{ marginTop: '1.5rem', padding: '0 2px' }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6, fontSize: '0.78rem', color: '#9B9B9B' }}>
+                        <div style={{ marginTop: '1rem', padding: '0 2px' }}>
+                          <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4, fontSize: '0.72rem', color: '#9B9B9B' }}>
                             <span>Getting ready</span>
                             <span>Ready to list</span>
                           </div>
-                          <div style={{ height: 8, background: '#F0F0EC', borderRadius: 4, overflow: 'hidden' }}>
-                            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #B8926A, #D4A44A)', borderRadius: 4, transition: 'width 0.5s ease' }} />
+                          <div style={{ height: 6, background: '#F0F0EC', borderRadius: 3, overflow: 'hidden' }}>
+                            <div style={{ height: '100%', width: `${pct}%`, background: 'linear-gradient(90deg, #B8926A, #D4A44A)', borderRadius: 3, transition: 'width 0.5s ease' }} />
                           </div>
                         </div>
                       )}
@@ -223,157 +233,163 @@ export default function ClientDashboard() {
                   )
                 })()}
 
-                {/* Task Checklist */}
-                <div className="section-header">
-                  <h2 className="section-title">Preparation Checklist</h2>
-                </div>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {(data.pre_market_tasks || []).map(t => (
-                    <div key={t.id} style={{
-                      display: 'flex', alignItems: 'center', gap: '1rem',
-                      padding: '14px 18px', background: 'white', borderRadius: 10,
-                      border: '1px solid #F0F0EC',
-                      opacity: t.status === 'complete' ? 0.65 : 1
-                    }}>
-                      <div style={{
-                        width: 28, height: 28, borderRadius: 8, flexShrink: 0,
-                        border: t.status === 'complete' ? 'none' : '2px solid #E0DCD4',
-                        background: t.status === 'complete' ? '#4A7C59' : 'transparent',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center'
-                      }}>
-                        {t.status === 'complete' && <CheckCircle size={18} color="#fff" />}
-                      </div>
-                      <div style={{ flex: 1 }}>
-                        <div style={{
-                          fontWeight: 500, fontSize: '0.95rem', color: '#1A1A1A',
-                          textDecoration: t.status === 'complete' ? 'line-through' : 'none'
-                        }}>{t.title}</div>
-                        {(t.scheduled_date || t.notes) && (
-                          <div style={{ fontSize: '0.8rem', color: '#9B9B9B', marginTop: 2 }}>
-                            {t.scheduled_date && <span>{new Date(t.scheduled_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
-                            {t.scheduled_date && t.notes && <span> · </span>}
-                            {t.notes && <span>{t.notes}</span>}
-                          </div>
-                        )}
-                      </div>
-                      <span style={{
-                        fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
-                        padding: '3px 10px', borderRadius: 100,
-                        background: t.status === 'complete' ? 'rgba(74, 124, 89, 0.1)' : t.status === 'in_progress' ? 'rgba(184, 146, 106, 0.1)' : t.status === 'scheduled' ? 'rgba(91, 127, 165, 0.1)' : 'rgba(155, 155, 155, 0.1)',
-                        color: t.status === 'complete' ? '#4A7C59' : t.status === 'in_progress' ? '#B8926A' : t.status === 'scheduled' ? '#5B7FA5' : '#9B9B9B'
-                      }}>
-                        {t.status === 'in_progress' ? 'In Progress' : t.status}
-                      </span>
-                    </div>
-                  ))}
-                  {(!data.pre_market_tasks || data.pre_market_tasks.length === 0) && (
-                    <div style={{ textAlign: 'center', padding: '3rem', color: '#9B9B9B', fontFamily: 'Cormorant Garamond, serif', fontSize: '1.1rem' }}>
-                      Your preparation plan is being finalized. Check back soon.
-                    </div>
-                  )}
-                </div>
+                {/* Two-Column: Vendors (left) + Checklist (right) */}
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '1.5rem', alignItems: 'start' }}>
 
-                {/* Upcoming Vendor Appointments */}
-                {(data.vendor_appointments || []).filter(v => v.status !== 'cancelled' && v.status !== 'complete').length > 0 && (
-                  <div style={{ marginTop: '2rem' }}>
+                  {/* LEFT — Vendor Appointments */}
+                  <div>
                     <div className="section-header">
                       <h2 className="section-title">Upcoming Appointments</h2>
                     </div>
-                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-                      {(data.vendor_appointments || []).filter(v => v.status !== 'cancelled' && v.status !== 'complete').map(v => (
-                        <div key={v.id} style={{
-                          padding: '18px 22px', background: 'white', borderRadius: 12,
-                          border: '1px solid #F0F0EC',
-                          borderLeft: `4px solid ${v.status === 'confirmed' ? '#4A7C59' : '#B8926A'}`
-                        }}>
-                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
-                            <div style={{ flex: 1 }}>
-                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 4 }}>
-                                <span style={{ fontWeight: 600, fontSize: '1rem', color: '#1A1A1A' }}>{v.vendor_name}</span>
-                                {v.company && <span style={{ fontSize: '0.85rem', color: '#9B9B9B' }}>· {v.company}</span>}
-                              </div>
-                              <div style={{
-                                fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
-                                padding: '2px 8px', borderRadius: 100, display: 'inline-block', marginBottom: 8,
-                                background: 'rgba(184, 146, 106, 0.08)', color: '#B8926A'
-                              }}>
-                                {v.service_type?.replace(/_/g, ' ')}
-                              </div>
-                              {v.scheduled_date && (
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 4 }}>
-                                  <Calendar size={14} color="#9B9B9B" />
-                                  <span style={{ fontSize: '0.9rem', color: '#1A1A1A', fontWeight: 500 }}>
-                                    {new Date(v.scheduled_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
-                                  </span>
-                                  <span style={{ fontSize: '0.85rem', color: '#6B6B6B' }}>
-                                    at {new Date(v.scheduled_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                                  </span>
+                    {(data.vendor_appointments || []).filter(v => v.status !== 'cancelled' && v.status !== 'complete').length > 0 ? (
+                      <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                        {(data.vendor_appointments || []).filter(v => v.status !== 'cancelled' && v.status !== 'complete').map(v => (
+                          <div key={v.id} style={{
+                            padding: '16px 18px', background: 'white', borderRadius: 10,
+                            border: '1px solid #F0F0EC',
+                            borderLeft: `4px solid ${v.status === 'confirmed' ? '#4A7C59' : '#B8926A'}`
+                          }}>
+                            <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '0.75rem' }}>
+                              <div style={{ flex: 1 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 3 }}>
+                                  <span style={{ fontWeight: 600, fontSize: '0.95rem', color: '#1A1A1A' }}>{v.vendor_name}</span>
+                                  {v.company && <span style={{ fontSize: '0.82rem', color: '#9B9B9B' }}>· {v.company}</span>}
                                 </div>
-                              )}
-                              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: 4 }}>
-                                {v.phone && (
-                                  <a href={`tel:${v.phone}`} style={{ fontSize: '0.82rem', color: '#5B7FA5', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    📞 {v.phone}
-                                  </a>
+                                <div style={{
+                                  fontSize: '0.7rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
+                                  padding: '2px 7px', borderRadius: 100, display: 'inline-block', marginBottom: 6,
+                                  background: 'rgba(184, 146, 106, 0.08)', color: '#B8926A'
+                                }}>
+                                  {v.service_type?.replace(/_/g, ' ')}
+                                </div>
+                                {v.scheduled_date && (
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', marginBottom: 3 }}>
+                                    <Calendar size={13} color="#9B9B9B" />
+                                    <span style={{ fontSize: '0.85rem', color: '#1A1A1A', fontWeight: 500 }}>
+                                      {new Date(v.scheduled_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                                    </span>
+                                    <span style={{ fontSize: '0.82rem', color: '#6B6B6B' }}>
+                                      at {new Date(v.scheduled_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                    </span>
+                                  </div>
                                 )}
-                                {v.email && (
-                                  <a href={`mailto:${v.email}`} style={{ fontSize: '0.82rem', color: '#5B7FA5', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
-                                    ✉ {v.email}
-                                  </a>
-                                )}
+                                <div style={{ display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginTop: 3 }}>
+                                  {v.phone && (
+                                    <a href={`tel:${v.phone}`} style={{ fontSize: '0.78rem', color: '#5B7FA5', textDecoration: 'none' }}>
+                                      📞 {v.phone}
+                                    </a>
+                                  )}
+                                  {v.email && (
+                                    <a href={`mailto:${v.email}`} style={{ fontSize: '0.78rem', color: '#5B7FA5', textDecoration: 'none' }}>
+                                      ✉ {v.email}
+                                    </a>
+                                  )}
+                                </div>
                               </div>
+                              {v.status === 'confirmed' && (
+                                <span style={{
+                                  fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
+                                  padding: '2px 8px', borderRadius: 100,
+                                  background: 'rgba(74, 124, 89, 0.1)', color: '#4A7C59', flexShrink: 0
+                                }}>
+                                  Confirmed
+                                </span>
+                              )}
                             </div>
-                            {v.status === 'confirmed' && (
-                              <span style={{
-                                fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
-                                padding: '3px 10px', borderRadius: 100,
-                                background: 'rgba(74, 124, 89, 0.1)', color: '#4A7C59', flexShrink: 0
+                            {v.notes && (
+                              <div style={{
+                                marginTop: 8, padding: '8px 12px', background: '#FAFAF8',
+                                borderRadius: 6, fontSize: '0.82rem', color: '#6B6B6B',
+                                borderLeft: '3px solid #E0DCD4'
                               }}>
-                                Confirmed
-                              </span>
+                                📋 {v.notes}
+                              </div>
                             )}
                           </div>
-                          {v.notes && (
-                            <div style={{
-                              marginTop: 10, padding: '10px 14px', background: '#FAFAF8',
-                              borderRadius: 8, fontSize: '0.85rem', color: '#6B6B6B',
-                              borderLeft: '3px solid #E0DCD4'
-                            }}>
-                              📋 {v.notes}
-                            </div>
-                          )}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                        ))}
 
-                {/* Completed Vendor Appointments */}
-                {(data.vendor_appointments || []).filter(v => v.status === 'complete').length > 0 && (
-                  <div style={{ marginTop: '1.5rem' }}>
+                        {/* Completed visits inline */}
+                        {(data.vendor_appointments || []).filter(v => v.status === 'complete').map(v => (
+                          <div key={v.id} style={{
+                            display: 'flex', alignItems: 'center', gap: '0.5rem',
+                            padding: '10px 14px', background: 'white', borderRadius: 8,
+                            border: '1px solid #F0F0EC', opacity: 0.55
+                          }}>
+                            <CheckCircle size={16} color="#4A7C59" />
+                            <span style={{ flex: 1, fontWeight: 500, fontSize: '0.85rem', color: '#1A1A1A' }}>{v.vendor_name}</span>
+                            <span style={{ fontSize: '0.75rem', color: '#9B9B9B' }}>
+                              {v.scheduled_date && new Date(v.scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <div style={{
+                        padding: '2rem', background: 'white', borderRadius: 10,
+                        border: '1px solid #F0F0EC', textAlign: 'center',
+                        color: '#9B9B9B', fontSize: '0.9rem', fontFamily: 'Cormorant Garamond, serif'
+                      }}>
+                        No upcoming appointments scheduled yet.
+                      </div>
+                    )}
+                  </div>
+
+                  {/* RIGHT — Preparation Checklist */}
+                  <div>
                     <div className="section-header">
-                      <h2 className="section-title" style={{ fontSize: '0.95rem', color: '#9B9B9B' }}>Completed Visits</h2>
+                      <h2 className="section-title">Preparation Checklist</h2>
                     </div>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                      {(data.vendor_appointments || []).filter(v => v.status === 'complete').map(v => (
-                        <div key={v.id} style={{
+                      {(data.pre_market_tasks || []).map(t => (
+                        <div key={t.id} style={{
                           display: 'flex', alignItems: 'center', gap: '0.75rem',
-                          padding: '12px 18px', background: 'white', borderRadius: 10,
-                          border: '1px solid #F0F0EC', opacity: 0.6
+                          padding: '12px 14px', background: 'white', borderRadius: 10,
+                          border: '1px solid #F0F0EC',
+                          opacity: t.status === 'complete' ? 0.65 : 1
                         }}>
-                          <CheckCircle size={18} color="#4A7C59" />
-                          <div style={{ flex: 1 }}>
-                            <span style={{ fontWeight: 500, fontSize: '0.9rem', color: '#1A1A1A' }}>{v.vendor_name}</span>
-                            {v.company && <span style={{ fontSize: '0.82rem', color: '#9B9B9B' }}> · {v.company}</span>}
+                          <div style={{
+                            width: 24, height: 24, borderRadius: 6, flexShrink: 0,
+                            border: t.status === 'complete' ? 'none' : '2px solid #E0DCD4',
+                            background: t.status === 'complete' ? '#4A7C59' : 'transparent',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                          }}>
+                            {t.status === 'complete' && <CheckCircle size={15} color="#fff" />}
                           </div>
-                          <span style={{ fontSize: '0.78rem', color: '#9B9B9B' }}>
-                            {v.scheduled_date && new Date(v.scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          <div style={{ flex: 1 }}>
+                            <div style={{
+                              fontWeight: 500, fontSize: '0.9rem', color: '#1A1A1A',
+                              textDecoration: t.status === 'complete' ? 'line-through' : 'none'
+                            }}>{t.title}</div>
+                            {(t.scheduled_date || t.notes) && (
+                              <div style={{ fontSize: '0.75rem', color: '#9B9B9B', marginTop: 1 }}>
+                                {t.scheduled_date && <span>{new Date(t.scheduled_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                                {t.scheduled_date && t.notes && <span> · </span>}
+                                {t.notes && <span>{t.notes}</span>}
+                              </div>
+                            )}
+                          </div>
+                          <span style={{
+                            fontSize: '0.68rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
+                            padding: '2px 8px', borderRadius: 100,
+                            background: t.status === 'complete' ? 'rgba(74, 124, 89, 0.1)' : t.status === 'in_progress' ? 'rgba(184, 146, 106, 0.1)' : t.status === 'scheduled' ? 'rgba(91, 127, 165, 0.1)' : 'rgba(155, 155, 155, 0.1)',
+                            color: t.status === 'complete' ? '#4A7C59' : t.status === 'in_progress' ? '#B8926A' : t.status === 'scheduled' ? '#5B7FA5' : '#9B9B9B'
+                          }}>
+                            {t.status === 'in_progress' ? 'In Progress' : t.status}
                           </span>
                         </div>
                       ))}
+                      {(!data.pre_market_tasks || data.pre_market_tasks.length === 0) && (
+                        <div style={{
+                          padding: '2rem', background: 'white', borderRadius: 10,
+                          border: '1px solid #F0F0EC', textAlign: 'center',
+                          color: '#9B9B9B', fontSize: '0.9rem', fontFamily: 'Cormorant Garamond, serif'
+                        }}>
+                          Your preparation plan is being finalized. Check back soon.
+                        </div>
+                      )}
                     </div>
                   </div>
-                )}
+                </div>
 
                 {/* Custom Sections for Pre-Market */}
                 {(data.custom_sections || []).filter(s => s.phase === 'pre_market').length > 0 && (
