@@ -79,7 +79,7 @@ class Property(Base):
     __tablename__ = "properties"
     id = Column(Integer, primary_key=True, index=True)
     address = Column(String(300), nullable=False)
-    street_number = Column(String(20))
+    street_number = Column(String(100))
     city = Column(String(100))
     state = Column(String(50), default="WA")
     zip_code = Column(String(20))
@@ -116,6 +116,18 @@ class Property(Base):
     pending_milestones = relationship("PendingMilestone", back_populates="property", cascade="all, delete-orphan")
     custom_sections = relationship("CustomPhaseSection", back_populates="property", cascade="all, delete-orphan")
     vendor_appointments = relationship("VendorAppointment", back_populates="property", cascade="all, delete-orphan")
+    gallery_links = relationship("PropertyGalleryLink", back_populates="property", cascade="all, delete-orphan")
+
+
+class PropertyGalleryLink(Base):
+    __tablename__ = "property_gallery_links"
+    id = Column(Integer, primary_key=True, index=True)
+    property_id = Column(Integer, ForeignKey("properties.id"), nullable=False)
+    title = Column(String(200), nullable=False)
+    url = Column(String(500), nullable=False)
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    property = relationship("Property", back_populates="gallery_links")
 
 
 class PropertyAccess(Base):
@@ -677,6 +689,13 @@ async def lifespan(app: FastAPI):
             conn.commit()
         except Exception:
             conn.rollback()
+    # Migrate: widen street_number column
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE properties ALTER COLUMN street_number TYPE VARCHAR(100)"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
     # Create upload directory
     os.makedirs(settings.upload_dir, exist_ok=True)
     os.makedirs(os.path.join(settings.upload_dir, "photos"), exist_ok=True)
@@ -1144,7 +1163,10 @@ async def get_property(property_id: int, current_user: User = Depends(get_curren
             "phone": v.phone, "email": v.email, "service_type": v.service_type,
             "scheduled_date": v.scheduled_date.isoformat() if v.scheduled_date else None,
             "notes": v.notes, "status": v.status
-        } for v in sorted(prop.vendor_appointments, key=lambda x: (x.scheduled_date or datetime.max, x.sort_order))]
+        } for v in sorted(prop.vendor_appointments, key=lambda x: (x.scheduled_date or datetime.max, x.sort_order))],
+        "gallery_links": [{
+            "id": l.id, "title": l.title, "url": l.url
+        } for l in sorted(prop.gallery_links, key=lambda x: x.sort_order)]
     }
 
 @app.put("/api/properties/{property_id}")
@@ -1546,6 +1568,36 @@ async def delete_vendor(vendor_id: int, admin: User = Depends(require_admin), db
     db.delete(v)
     db.commit()
     return {"message": "Vendor deleted"}
+
+
+# ─── Gallery Link Routes ─────────────────────────────────────────────────────
+
+@app.get("/api/properties/{property_id}/gallery-links")
+async def get_gallery_links(property_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    links = db.query(PropertyGalleryLink).filter(
+        PropertyGalleryLink.property_id == property_id
+    ).order_by(PropertyGalleryLink.sort_order).all()
+    return [{"id": l.id, "title": l.title, "url": l.url} for l in links]
+
+
+@app.post("/api/properties/{property_id}/gallery-links")
+async def create_gallery_link(property_id: int, title: str = Form(...), url: str = Form(...), admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    max_order = db.query(PropertyGalleryLink).filter(PropertyGalleryLink.property_id == property_id).count()
+    link = PropertyGalleryLink(property_id=property_id, title=title, url=url, sort_order=max_order)
+    db.add(link)
+    db.commit()
+    db.refresh(link)
+    return {"id": link.id, "message": "Gallery link added"}
+
+
+@app.delete("/api/gallery-links/{link_id}")
+async def delete_gallery_link(link_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    link = db.query(PropertyGalleryLink).filter(PropertyGalleryLink.id == link_id).first()
+    if not link:
+        raise HTTPException(status_code=404, detail="Link not found")
+    db.delete(link)
+    db.commit()
+    return {"message": "Gallery link deleted"}
 
 
 # ─── Photo Upload Routes ─────────────────────────────────────────────────────
@@ -2262,7 +2314,10 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
             "phone": v.phone, "email": v.email, "service_type": v.service_type,
             "scheduled_date": v.scheduled_date.isoformat() if v.scheduled_date else None,
             "notes": v.notes, "status": v.status
-        } for v in sorted(prop.vendor_appointments, key=lambda x: (x.scheduled_date or datetime.max, x.sort_order))]
+        } for v in sorted(prop.vendor_appointments, key=lambda x: (x.scheduled_date or datetime.max, x.sort_order))],
+        "gallery_links": [{
+            "id": l.id, "title": l.title, "url": l.url
+        } for l in sorted(prop.gallery_links, key=lambda x: x.sort_order)]
     }
 
 

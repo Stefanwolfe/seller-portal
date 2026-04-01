@@ -788,12 +788,52 @@ export default function ClientDashboard() {
                   </div>
                 )}
 
-                {data.property.gallery_url ? (
+                {/* Multiple Gallery Links */}
+                {(data.gallery_links || []).length > 0 ? (
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                    {(data.gallery_links || []).map(link => (
+                      <a key={link.id} href={link.url} target="_blank" rel="noopener noreferrer" style={{
+                        display: 'flex', alignItems: 'center', gap: '1rem',
+                        padding: '20px 24px', background: 'var(--client-surface)',
+                        borderRadius: 'var(--client-radius)', border: '1px solid var(--client-border-light)',
+                        boxShadow: 'var(--client-shadow)', textDecoration: 'none',
+                        transition: 'all 0.15s ease'
+                      }}
+                        onMouseOver={e => { e.currentTarget.style.borderColor = 'var(--client-gold-light)'; e.currentTarget.style.boxShadow = 'var(--client-shadow-lg)' }}
+                        onMouseOut={e => { e.currentTarget.style.borderColor = 'var(--client-border-light)'; e.currentTarget.style.boxShadow = 'var(--client-shadow)' }}
+                      >
+                        <div style={{
+                          width: 44, height: 44, borderRadius: 10,
+                          background: 'var(--client-gold-subtle)',
+                          display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                        }}>
+                          <Camera size={20} color="var(--client-gold)" strokeWidth={1.5} />
+                        </div>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.15rem', fontWeight: 500, color: 'var(--client-text)' }}>
+                            {link.title}
+                          </div>
+                          <div style={{ fontSize: '0.82rem', color: 'var(--client-text-muted)', marginTop: 1 }}>
+                            View photos →
+                          </div>
+                        </div>
+                        <div style={{
+                          padding: '8px 18px', background: 'var(--client-gold)', color: 'white',
+                          borderRadius: 8, fontSize: '0.85rem', fontWeight: 500, fontFamily: 'DM Sans, sans-serif',
+                          flexShrink: 0
+                        }}>
+                          Open
+                        </div>
+                      </a>
+                    ))}
+                  </div>
+                ) : data.property.gallery_url ? (
+                  /* Fallback: legacy single gallery_url */
                   <div style={{ background: 'var(--client-surface)', borderRadius: 'var(--client-radius)', padding: '2rem', boxShadow: 'var(--client-shadow)', border: '1px solid var(--client-border-light)', textAlign: 'center' }}>
                     <Camera size={32} strokeWidth={1} style={{ color: 'var(--client-gold)', marginBottom: '0.75rem' }} />
                     <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.3rem', fontWeight: 500, marginBottom: '0.5rem', color: 'var(--client-text)' }}>View Full Photo Gallery</div>
                     <div style={{ fontSize: '0.9rem', color: 'var(--client-text-secondary)', marginBottom: '1.25rem', lineHeight: 1.5 }}>Browse all professional photos of your property</div>
-                    <a href={data.property.gallery_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 28px', background: 'var(--client-gold)', color: 'white', borderRadius: '10px', textDecoration: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: '0.95rem', fontWeight: 500 }}>Open Gallery \u2192</a>
+                    <a href={data.property.gallery_url} target="_blank" rel="noopener noreferrer" style={{ display: 'inline-flex', alignItems: 'center', gap: '8px', padding: '12px 28px', background: 'var(--client-gold)', color: 'white', borderRadius: '10px', textDecoration: 'none', fontFamily: 'DM Sans, sans-serif', fontSize: '0.95rem', fontWeight: 500 }}>Open Gallery →</a>
                   </div>
                 ) : !data.photos?.length ? (
                   <div className="empty-state" style={{ paddingTop: '3rem' }}>

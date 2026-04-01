@@ -457,6 +457,8 @@ export default function AdminPropertyDetail() {
   // ─── Property Edit ────────────────────────────────────────────────────
   const [showPropertyEdit, setShowPropertyEdit] = useState(false)
   const [propForm, setPropForm] = useState({})
+  const [showGalleryForm, setShowGalleryForm] = useState(false)
+  const [galleryForm, setGalleryForm] = useState({ title: '', url: '' })
 
   const startEditProperty = () => {
     setPropForm({
@@ -492,6 +494,20 @@ export default function AdminPropertyDetail() {
     } catch (err) {
       alert(err.message)
     }
+  }
+
+  const handleAddGalleryLink = async (e) => {
+    e.preventDefault()
+    if (!galleryForm.title || !galleryForm.url) return
+    await api.createGalleryLink(id, galleryForm.title, galleryForm.url)
+    setGalleryForm({ title: '', url: '' })
+    setShowGalleryForm(false)
+    loadData()
+  }
+
+  const handleDeleteGalleryLink = async (linkId) => {
+    await api.deleteGalleryLink(linkId)
+    loadData()
   }
 
   if (loading || !property) {
@@ -870,15 +886,60 @@ export default function AdminPropertyDetail() {
         {tab === 'photos' && (
           <>
             <div className="admin-card" style={{ marginBottom: '1.5rem' }}>
-              <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem', marginBottom: '1rem' }}>Photo Gallery Link</h3>
-              <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-end' }}>
-                <div className="form-group" style={{ flex: 1, margin: 0 }}>
-                  <label className="form-label">Gallery URL (Autofocus, etc.)</label>
-                  <input className="form-input" value={property.gallery_url || ''} onChange={e => setProperty({...property, gallery_url: e.target.value})} placeholder="https://autofocus.io/galleries/..." />
-                </div>
-                <button className="btn btn--primary" onClick={async () => { await api.updateProperty(id, { gallery_url: property.gallery_url || '' }); loadData(); }}>Save</button>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem' }}>Gallery Links</h3>
+                <button className="btn btn--ghost btn--small" onClick={() => setShowGalleryForm(!showGalleryForm)}><Plus size={12} /> Add Link</button>
               </div>
-              {property.gallery_url && (<div style={{ marginTop: '0.75rem', fontSize: '0.85rem' }}><a href={property.gallery_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--admin-gold)' }}>View gallery \u2192</a></div>)}
+              <p style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)', marginBottom: '0.75rem' }}>
+                Add Autofocus galleries, virtual tours, or any external photo links. Clients see these in their Gallery tab.
+              </p>
+
+              {showGalleryForm && (
+                <form onSubmit={handleAddGalleryLink} style={{ background: 'var(--admin-bg)', borderRadius: 8, padding: '12px', marginBottom: '0.75rem', border: '1px solid var(--admin-gold-dim)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <input className="form-input" value={galleryForm.title} onChange={e => setGalleryForm({...galleryForm, title: e.target.value})} required placeholder="Label (e.g. Main Gallery)" style={{ fontSize: '0.85rem' }} />
+                    <input className="form-input" value={galleryForm.url} onChange={e => setGalleryForm({...galleryForm, url: e.target.value})} required placeholder="https://autofocus.io/galleries/..." style={{ fontSize: '0.85rem' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button type="submit" className="btn btn--primary btn--small">Add</button>
+                    <button type="button" className="btn btn--ghost btn--small" onClick={() => setShowGalleryForm(false)}>Cancel</button>
+                  </div>
+                </form>
+              )}
+
+              {/* Existing links */}
+              {(property.gallery_links || []).length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {(property.gallery_links || []).map(link => (
+                    <div key={link.id} style={{
+                      display: 'flex', alignItems: 'center', gap: '0.75rem',
+                      padding: '10px 12px', background: 'var(--admin-bg)', borderRadius: 8
+                    }}>
+                      <div style={{ flex: 1 }}>
+                        <div style={{ fontWeight: 500, fontSize: '0.9rem' }}>{link.title}</div>
+                        <a href={link.url} target="_blank" rel="noopener noreferrer" style={{ fontSize: '0.78rem', color: 'var(--admin-gold)', wordBreak: 'break-all' }}>
+                          {link.url.length > 60 ? link.url.slice(0, 60) + '...' : link.url} →
+                        </a>
+                      </div>
+                      <button onClick={() => handleDeleteGalleryLink(link.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 4 }}>
+                        <Trash2 size={14} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ fontSize: '0.82rem', color: 'var(--admin-text-muted)', padding: '0.5rem 0' }}>
+                  No gallery links yet. {!property.gallery_url ? '' : ''}
+                </div>
+              )}
+
+              {/* Legacy single link migration hint */}
+              {property.gallery_url && (property.gallery_links || []).length === 0 && (
+                <div style={{ marginTop: '0.75rem', padding: '10px 12px', background: 'rgba(212,164,74,0.08)', borderRadius: 8, fontSize: '0.82rem', color: 'var(--admin-text-secondary)' }}>
+                  You have a legacy gallery link: <a href={property.gallery_url} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--admin-gold)' }}>{property.gallery_url.slice(0, 50)}...</a>
+                  <br/>Click "Add Link" above to add it as a named link, then you can remove the old one.
+                </div>
+              )}
             </div>
             <div className="admin-card">
               <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem', marginBottom: '1rem' }}>Hero Photo</h3>

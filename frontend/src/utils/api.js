@@ -349,6 +349,25 @@ class ApiClient {
     return this.request(`/vendors/${vendorId}`, { method: 'DELETE' });
   }
 
+  // Gallery Links
+  getGalleryLinks(propertyId) {
+    return this.request(`/properties/${propertyId}/gallery-links`);
+  }
+
+  createGalleryLink(propertyId, title, url) {
+    const formData = new FormData();
+    formData.append('title', title);
+    formData.append('url', url);
+    return this.request(`/properties/${propertyId}/gallery-links`, {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
+  deleteGalleryLink(linkId) {
+    return this.request(`/gallery-links/${linkId}`, { method: 'DELETE' });
+  }
+
   // Clients
   getClients() {
     return this.request('/clients');
