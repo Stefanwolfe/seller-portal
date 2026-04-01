@@ -19,7 +19,7 @@ import resend
 
 from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Float, ForeignKey, Date, Enum as SAEnum
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker, Session, relationship
+from sqlalchemy.orm import sessionmaker, Session, relationship, selectinload
 from sqlalchemy.dialects.postgresql import JSON
 
 from jose import JWTError, jwt
@@ -46,7 +46,13 @@ class Settings(BaseSettings):
 settings = Settings()
 
 # ─── Database ─────────────────────────────────────────────────────────────────
-engine = create_engine(settings.database_url)
+engine = create_engine(
+    settings.database_url,
+    pool_pre_ping=True,  # Verify connections before using (avoids stale connection errors)
+    pool_size=5,
+    max_overflow=10,
+    pool_recycle=300,  # Recycle connections every 5 min
+)
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
 Base = declarative_base()
 
@@ -982,19 +988,28 @@ async def list_properties(
     db: Session = Depends(get_db)
 ):
     if current_user.role == "admin":
-        query = db.query(Property)
+        query = db.query(Property).options(
+            selectinload(Property.photos),
+            selectinload(Property.activities),
+        )
         if not include_archived:
             query = query.filter((Property.is_archived == False) | (Property.is_archived == None))
         if status:
             if status == "Archived":
-                query = db.query(Property).filter(Property.is_archived == True)
+                query = db.query(Property).options(
+                    selectinload(Property.photos),
+                    selectinload(Property.activities),
+                ).filter(Property.is_archived == True)
             else:
                 query = query.filter(Property.status == status)
         properties = query.order_by(Property.created_at.desc()).all()
     else:
         # Client: only show their non-archived properties
         property_ids = [pa.property_id for pa in current_user.property_accesses]
-        query = db.query(Property).filter(
+        query = db.query(Property).options(
+            selectinload(Property.photos),
+            selectinload(Property.activities),
+        ).filter(
             Property.id.in_(property_ids),
             (Property.is_archived == False) | (Property.is_archived == None)
         )
@@ -1004,20 +1019,10 @@ async def list_properties(
 
     results = []
     for p in properties:
-        # Count activities
-        total_showings = db.query(Activity).filter(
-            Activity.property_id == p.id,
-            Activity.activity_type == "showing",
-            Activity.is_pushed == True if current_user.role == "client" else True
-        ).count()
-        total_open_house = db.query(Activity).filter(
-            Activity.property_id == p.id,
-            Activity.activity_type == "open_house"
-        ).count()
-        pending_approval = db.query(Activity).filter(
-            Activity.property_id == p.id,
-            Activity.is_approved == False
-        ).count() if current_user.role == "admin" else 0
+        # Count from already-loaded relationships — no extra queries
+        total_showings = sum(1 for a in p.activities if a.activity_type == "showing" and (current_user.role == "admin" or a.is_pushed))
+        total_open_house = sum(1 for a in p.activities if a.activity_type == "open_house")
+        pending_approval = sum(1 for a in p.activities if not a.is_approved) if current_user.role == "admin" else 0
 
         results.append({
             "id": p.id,
@@ -1056,7 +1061,14 @@ async def create_property(prop: PropertyCreate, admin: User = Depends(require_ad
 
 @app.get("/api/properties/{property_id}")
 async def get_property(property_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
-    prop = db.query(Property).filter(Property.id == property_id).first()
+    prop = db.query(Property).options(
+        selectinload(Property.photos),
+        selectinload(Property.pre_market_tasks),
+        selectinload(Property.pending_milestones),
+        selectinload(Property.custom_sections).selectinload(CustomPhaseSection.items),
+        selectinload(Property.vendor_appointments),
+        selectinload(Property.gallery_links),
+    ).filter(Property.id == property_id).first()
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
 
@@ -2139,7 +2151,14 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
         if not access:
             raise HTTPException(status_code=403, detail="Access denied")
 
-    prop = db.query(Property).filter(Property.id == property_id).first()
+    prop = db.query(Property).options(
+        selectinload(Property.photos),
+        selectinload(Property.pre_market_tasks),
+        selectinload(Property.pending_milestones),
+        selectinload(Property.custom_sections).selectinload(CustomPhaseSection.items),
+        selectinload(Property.vendor_appointments),
+        selectinload(Property.gallery_links),
+    ).filter(Property.id == property_id).first()
     if not prop:
         raise HTTPException(status_code=404, detail="Property not found")
 
