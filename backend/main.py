@@ -79,7 +79,7 @@ class Property(Base):
     __tablename__ = "properties"
     id = Column(Integer, primary_key=True, index=True)
     address = Column(String(300), nullable=False)
-    street_number = Column(String(20))
+    street_number = Column(String(100))
     city = Column(String(100))
     state = Column(String(50), default="WA")
     zip_code = Column(String(20))
@@ -674,6 +674,13 @@ async def lifespan(app: FastAPI):
     with engine.connect() as conn:
         try:
             conn.execute(text("ALTER TABLE activities ADD COLUMN activity_end_date TIMESTAMP"))
+            conn.commit()
+        except Exception:
+            conn.rollback()
+    # Migrate: widen street_number column
+    with engine.connect() as conn:
+        try:
+            conn.execute(text("ALTER TABLE properties ALTER COLUMN street_number TYPE VARCHAR(100)"))
             conn.commit()
         except Exception:
             conn.rollback()
@@ -1822,6 +1829,207 @@ Write 2-3 professional sentences. Focus on positives and constructive points. On
 
     db.commit()
     return {"imported": imported, "message": f"Imported {imported} activities"}
+
+
+# ─── ShowingTime PDF Import ──────────────────────────────────────────────────
+
+@app.post("/api/activities/import-showingtime")
+async def import_showingtime(
+    file: UploadFile = File(...),
+    admin: User = Depends(require_admin),
+    db: Session = Depends(get_db)
+):
+    """Parse a ShowingTime PDF, match listings by MLS#, create draft activities."""
+    import pdfplumber
+    import io
+    import re
+
+    content = await file.read()
+    pdf = pdfplumber.open(io.BytesIO(content))
+
+    # Extract all table rows from all pages
+    all_rows = []
+    for page in pdf.pages:
+        tables = page.extract_tables()
+        for table in tables:
+            for row in table:
+                if row and len(row) >= 6:
+                    all_rows.append([re.sub(r'\s+', ' ', str(cell)).strip() if cell else "" for cell in row])
+    pdf.close()
+
+    if not all_rows:
+        raise HTTPException(status_code=400, detail="Could not extract table data from PDF. Make sure this is a ShowingTime showings report.")
+
+    # Find header row to determine column mapping
+    header_idx = None
+    col_map = {}
+    header_keywords = {
+        "listing": "listing_id", "id": "listing_id",
+        "address": "address",
+        "status": "status",
+        "date": "date",
+        "start": "start_time",
+        "end": "end_time",
+        "showing": "agent", "agent": "agent",
+    }
+    for i, row in enumerate(all_rows):
+        row_lower = [c.lower() for c in row]
+        matches = 0
+        for j, cell in enumerate(row_lower):
+            for keyword, field in header_keywords.items():
+                if keyword in cell and field not in col_map:
+                    col_map[field] = j
+                    matches += 1
+        if matches >= 3:
+            header_idx = i
+            break
+
+    if header_idx is None:
+        # Fallback: assume standard ShowingTime column order
+        col_map = {"listing_id": 0, "address": 1, "status": 2, "date": 3, "start_time": 4, "end_time": 5, "agent": 6}
+        header_idx = 0
+
+    # Load all properties for matching
+    properties = db.query(Property).filter(
+        (Property.is_archived == False) | (Property.is_archived == None)
+    ).all()
+
+    # Build lookup by MLS number
+    mls_lookup = {}
+    for prop in properties:
+        if prop.mls_number:
+            mls_lookup[prop.mls_number.strip()] = prop
+
+    # Process data rows
+    results = {"created": 0, "skipped_cancelled": 0, "skipped_no_match": 0, "skipped_duplicate": 0, "details": []}
+
+    for row in all_rows[header_idx + 1:]:
+        try:
+            listing_id = row[col_map.get("listing_id", 0)].strip()
+            address = row[col_map.get("address", 1)].strip()
+            status = row[col_map.get("status", 2)].strip().lower()
+            date_str = row[col_map.get("date", 3)].strip()
+            start_str = row[col_map.get("start_time", 4)].strip()
+            end_str = row[col_map.get("end_time", 5)].strip()
+            agent = row[col_map.get("agent", 6)].strip() if col_map.get("agent", 6) < len(row) else ""
+
+            # Skip empty rows or header-like rows
+            if not listing_id or not date_str or listing_id.lower() in ("listing", "listing id", "id"):
+                continue
+
+            # Skip cancelled showings
+            if "cancel" in status:
+                results["skipped_cancelled"] += 1
+                continue
+
+            # Clean listing ID (remove any non-numeric characters)
+            listing_id_clean = re.sub(r'[^\d]', '', listing_id)
+
+            # Match to property by MLS number
+            matched_prop = mls_lookup.get(listing_id_clean)
+
+            if not matched_prop:
+                # Try partial address match as fallback
+                for prop in properties:
+                    if prop.address and address:
+                        # Compare street numbers
+                        addr_num = re.match(r'(\d+)', address)
+                        prop_num = re.match(r'(\d+)', prop.address)
+                        if addr_num and prop_num and addr_num.group(1) == prop_num.group(1):
+                            # Street number matches, check for street name overlap
+                            addr_words = set(address.lower().split())
+                            prop_words = set(prop.address.lower().split())
+                            if len(addr_words & prop_words) >= 2:
+                                matched_prop = prop
+                                break
+
+            if not matched_prop:
+                results["skipped_no_match"] += 1
+                results["details"].append(f"No match: MLS#{listing_id_clean} — {address}")
+                continue
+
+            # Parse date and times
+            activity_date = None
+            activity_end_date = None
+            for fmt in ["%m/%d/%Y", "%Y-%m-%d", "%m/%d/%y"]:
+                try:
+                    parsed_date = datetime.strptime(date_str, fmt)
+                    break
+                except ValueError:
+                    continue
+            else:
+                continue
+
+            # Parse start time
+            if start_str:
+                try:
+                    time_clean = re.sub(r'\s+', ' ', start_str).strip()
+                    for tfmt in ["%I:%M %p", "%I:%M%p", "%H:%M"]:
+                        try:
+                            parsed_time = datetime.strptime(time_clean, tfmt)
+                            activity_date = parsed_date.replace(hour=parsed_time.hour, minute=parsed_time.minute)
+                            break
+                        except ValueError:
+                            continue
+                except Exception:
+                    activity_date = parsed_date
+            else:
+                activity_date = parsed_date
+
+            # Parse end time
+            if end_str:
+                try:
+                    time_clean = re.sub(r'\s+', ' ', end_str).strip()
+                    for tfmt in ["%I:%M %p", "%I:%M%p", "%H:%M"]:
+                        try:
+                            parsed_time = datetime.strptime(time_clean, tfmt)
+                            activity_end_date = parsed_date.replace(hour=parsed_time.hour, minute=parsed_time.minute)
+                            break
+                        except ValueError:
+                            continue
+                except Exception:
+                    pass
+
+            # Check for duplicate (same property, same date, same start time)
+            existing = db.query(Activity).filter(
+                Activity.property_id == matched_prop.id,
+                Activity.activity_date == activity_date,
+                Activity.source == "showingtime"
+            ).first()
+            if existing:
+                results["skipped_duplicate"] += 1
+                continue
+
+            # Create the activity — not approved, not pushed (draft state)
+            act = Activity(
+                property_id=matched_prop.id,
+                activity_type="showing",
+                activity_date=activity_date,
+                activity_end_date=activity_end_date,
+                brokerage=agent,
+                visitor_count=1,
+                source="showingtime",
+                created_by=admin.username,
+                is_approved=False,
+                is_pushed=False
+            )
+            db.add(act)
+            results["created"] += 1
+            results["details"].append(f"Created: {matched_prop.address} — {date_str} {start_str} ({agent})")
+
+        except Exception as e:
+            print(f"ShowingTime row error: {e}")
+            continue
+
+    db.commit()
+    return {
+        "message": f"Imported {results['created']} showings",
+        "created": results["created"],
+        "skipped_cancelled": results["skipped_cancelled"],
+        "skipped_no_match": results["skipped_no_match"],
+        "skipped_duplicate": results["skipped_duplicate"],
+        "details": results["details"]
+    }
 
 
 # ─── Marketing Routes ─────────────────────────────────────────────────────────
