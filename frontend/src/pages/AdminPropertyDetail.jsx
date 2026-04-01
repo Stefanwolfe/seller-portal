@@ -73,6 +73,19 @@ export default function AdminPropertyDetail() {
   const receiptRef = useRef()
   const [uploadingReceipt, setUploadingReceipt] = useState(null)
 
+  // Vendor appointments
+  const [showVendorForm, setShowVendorForm] = useState(false)
+  const [vendorForm, setVendorForm] = useState({ vendor_name: '', company: '', phone: '', email: '', service_type: 'photography', scheduled_date: '', notes: '' })
+  const SERVICE_TYPES = [
+    { value: 'photography', label: 'Photography' },
+    { value: 'staging', label: 'Staging' },
+    { value: 'inspection', label: 'Inspection' },
+    { value: 'repairs', label: 'Repairs / Contractor' },
+    { value: 'cleaning', label: 'Cleaning' },
+    { value: 'landscaping', label: 'Landscaping' },
+    { value: 'other', label: 'Other' },
+  ]
+
   // Pending dates editing
   const [pendingDatesLocal, setPendingDatesLocal] = useState({})
   const [savingDates, setSavingDates] = useState(false)
@@ -369,6 +382,29 @@ export default function AdminPropertyDetail() {
     }
   }
 
+  // ─── Vendor Appointments ──────────────────────────────────────────────
+  const handleCreateVendor = async (e) => {
+    e.preventDefault()
+    const data = { ...vendorForm }
+    Object.keys(data).forEach(k => { if (data[k] === '') delete data[k] })
+    if (data.scheduled_date) data.scheduled_date = new Date(data.scheduled_date).toISOString()
+    await api.createVendor(id, data)
+    setShowVendorForm(false)
+    setVendorForm({ vendor_name: '', company: '', phone: '', email: '', service_type: 'photography', scheduled_date: '', notes: '' })
+    loadData()
+  }
+
+  const handleUpdateVendorStatus = async (vendorId, status) => {
+    await api.updateVendor(vendorId, { status })
+    loadData()
+  }
+
+  const handleDeleteVendor = async (vendorId) => {
+    if (!confirm('Delete this vendor appointment?')) return
+    await api.deleteVendor(vendorId)
+    loadData()
+  }
+
   if (loading || !property) {
     return <div className="admin-portal"><AdminNav /><div className="admin-page" style={{ textAlign: 'center', paddingTop: '4rem', color: 'var(--admin-text-muted)' }}>Loading...</div></div>
   }
@@ -468,7 +504,10 @@ export default function AdminPropertyDetail() {
         {/* Tabs */}
         <div style={{ display: 'flex', gap: '4px', marginBottom: '1.5rem', borderBottom: '1px solid var(--admin-border)', paddingBottom: '0.75rem', flexWrap: 'wrap' }}>
           {[
-            ...(property.phase === 'pre_market' ? [{ id: 'tasks', label: 'Tasks', icon: ListChecks, count: property.pre_market_tasks?.filter(t => t.status !== 'complete').length }] : []),
+            ...(property.phase === 'pre_market' ? [
+              { id: 'tasks', label: 'Tasks', icon: ListChecks, count: property.pre_market_tasks?.filter(t => t.status !== 'complete').length },
+              { id: 'vendors', label: 'Vendors', icon: Clock, count: property.vendor_appointments?.filter(v => v.status === 'upcoming' || v.status === 'confirmed').length },
+            ] : []),
             { id: 'activities', label: 'Activities', icon: Calendar, count: pendingApproval },
             { id: 'photos', label: 'Photos', icon: Image, count: property.photos?.length },
             { id: 'marketing', label: 'Marketing', icon: Megaphone },
@@ -1059,6 +1098,123 @@ export default function AdminPropertyDetail() {
               {(property.custom_sections || []).filter(s => s.phase === 'pre_market').length === 0 && !showCustomSectionForm && (
                 <div style={{ fontSize: '0.82rem', color: 'var(--admin-text-muted)', padding: '0.5rem 0' }}>
                   No custom sections yet.
+                </div>
+              )}
+            </div>
+          </>
+        )}
+
+        {/* ─── Vendor Appointments Tab ──────────────────────────────────── */}
+        {tab === 'vendors' && (
+          <>
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+              <div>
+                <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem', marginBottom: 2 }}>Vendor Appointments</h3>
+                <p style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)' }}>
+                  Schedule vendor visits — your client will see these as "Upcoming Appointments" on their dashboard.
+                </p>
+              </div>
+              <button className="btn btn--primary btn--small" onClick={() => setShowVendorForm(true)}><Plus size={14} /> Add Vendor</button>
+            </div>
+
+            {showVendorForm && (
+              <div className="admin-card" style={{ marginBottom: '1rem', borderColor: 'var(--admin-gold)' }}>
+                <form onSubmit={handleCreateVendor}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Vendor Name</label>
+                      <input className="form-input" value={vendorForm.vendor_name} onChange={e => setVendorForm({...vendorForm, vendor_name: e.target.value})} required placeholder="e.g. John Smith" />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Company</label>
+                      <input className="form-input" value={vendorForm.company} onChange={e => setVendorForm({...vendorForm, company: e.target.value})} placeholder="e.g. ABC Photography" />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Service Type</label>
+                      <select className="form-select" value={vendorForm.service_type} onChange={e => setVendorForm({...vendorForm, service_type: e.target.value})}>
+                        {SERVICE_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                      </select>
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Phone</label>
+                      <input className="form-input" value={vendorForm.phone} onChange={e => setVendorForm({...vendorForm, phone: e.target.value})} placeholder="555-123-4567" />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Email</label>
+                      <input className="form-input" value={vendorForm.email} onChange={e => setVendorForm({...vendorForm, email: e.target.value})} placeholder="vendor@company.com" />
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                    <label className="form-label">Scheduled Date & Time</label>
+                    <input className="form-input" type="datetime-local" value={vendorForm.scheduled_date} onChange={e => setVendorForm({...vendorForm, scheduled_date: e.target.value})} style={{ maxWidth: 280 }} />
+                  </div>
+                  <div className="form-group" style={{ marginBottom: '0.75rem' }}>
+                    <label className="form-label">Client Notes (visible to your client)</label>
+                    <input className="form-input" value={vendorForm.notes} onChange={e => setVendorForm({...vendorForm, notes: e.target.value})} placeholder="e.g. Please have garage cleared and all lights on" />
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button type="submit" className="btn btn--primary btn--small">Add Vendor</button>
+                    <button type="button" className="btn btn--ghost btn--small" onClick={() => setShowVendorForm(false)}>Cancel</button>
+                  </div>
+                </form>
+              </div>
+            )}
+
+            <div className="admin-card">
+              {property.vendor_appointments?.length > 0 ? (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                  {property.vendor_appointments.map(v => (
+                    <div key={v.id} style={{
+                      padding: '12px 14px', background: 'var(--admin-bg)', borderRadius: 8,
+                      opacity: v.status === 'complete' || v.status === 'cancelled' ? 0.5 : 1,
+                      borderLeft: `3px solid ${v.status === 'complete' ? 'var(--admin-success)' : v.status === 'cancelled' ? 'var(--admin-text-muted)' : v.status === 'confirmed' ? '#7F77DD' : 'var(--admin-warning)'}`
+                    }}>
+                      <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem' }}>
+                        <div style={{ flex: 1 }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 2 }}>
+                            <span style={{ fontWeight: 600, fontSize: '0.92rem' }}>{v.vendor_name}</span>
+                            {v.company && <span style={{ fontSize: '0.82rem', color: 'var(--admin-text-secondary)' }}>· {v.company}</span>}
+                          </div>
+                          <div style={{ fontSize: '0.78rem', color: 'var(--admin-text-muted)', display: 'flex', gap: '0.75rem', flexWrap: 'wrap', marginBottom: v.notes ? 4 : 0 }}>
+                            <span style={{ background: 'var(--admin-gold-dim)', color: 'var(--admin-gold)', padding: '1px 8px', borderRadius: 4, fontSize: '0.72rem', fontWeight: 500 }}>
+                              {SERVICE_TYPES.find(t => t.value === v.service_type)?.label || v.service_type}
+                            </span>
+                            {v.scheduled_date && (
+                              <span style={{ fontFamily: 'JetBrains Mono' }}>
+                                {new Date(v.scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} at {new Date(v.scheduled_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                              </span>
+                            )}
+                            {v.phone && <span>📞 {v.phone}</span>}
+                            {v.email && <span>✉ {v.email}</span>}
+                          </div>
+                          {v.notes && (
+                            <div style={{ fontSize: '0.8rem', color: 'var(--admin-text-secondary)', marginTop: 2, fontStyle: 'italic' }}>
+                              Client note: "{v.notes}"
+                            </div>
+                          )}
+                        </div>
+                        <select
+                          value={v.status}
+                          onChange={e => handleUpdateVendorStatus(v.id, e.target.value)}
+                          style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: 4, border: '1px solid var(--admin-border)', background: 'var(--admin-surface)', color: 'var(--admin-text-secondary)', cursor: 'pointer' }}
+                        >
+                          <option value="upcoming">Upcoming</option>
+                          <option value="confirmed">Confirmed</option>
+                          <option value="complete">Complete</option>
+                          <option value="cancelled">Cancelled</option>
+                        </select>
+                        <button onClick={() => handleDeleteVendor(v.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 4 }}>
+                          <Trash2 size={14} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--admin-text-muted)' }}>
+                  No vendor appointments yet. Add vendors so your clients know who's coming and when.
                 </div>
               )}
             </div>

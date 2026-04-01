@@ -317,6 +317,29 @@ class ApiClient {
     return this.request(`/custom-section-items/${itemId}`, { method: 'DELETE' });
   }
 
+  // Vendor Appointments
+  getVendors(propertyId) {
+    return this.request(`/properties/${propertyId}/vendors`);
+  }
+
+  createVendor(propertyId, data) {
+    return this.request(`/properties/${propertyId}/vendors`, {
+      method: 'POST',
+      body: JSON.stringify({ ...data, property_id: propertyId }),
+    });
+  }
+
+  updateVendor(vendorId, data) {
+    return this.request(`/vendors/${vendorId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteVendor(vendorId) {
+    return this.request(`/vendors/${vendorId}`, { method: 'DELETE' });
+  }
+
   // Clients
   getClients() {
     return this.request('/clients');

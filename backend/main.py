@@ -115,6 +115,7 @@ class Property(Base):
     pre_market_tasks = relationship("PreMarketTask", back_populates="property", cascade="all, delete-orphan")
     pending_milestones = relationship("PendingMilestone", back_populates="property", cascade="all, delete-orphan")
     custom_sections = relationship("CustomPhaseSection", back_populates="property", cascade="all, delete-orphan")
+    vendor_appointments = relationship("VendorAppointment", back_populates="property", cascade="all, delete-orphan")
 
 
 class PropertyAccess(Base):
@@ -252,6 +253,23 @@ class CustomPhaseSectionItem(Base):
     status = Column(String(50), default="pending")  # pending, complete
     sort_order = Column(Integer, default=0)
     section = relationship("CustomPhaseSection", back_populates="items")
+
+
+class VendorAppointment(Base):
+    __tablename__ = "vendor_appointments"
+    id = Column(Integer, primary_key=True, index=True)
+    property_id = Column(Integer, ForeignKey("properties.id"), nullable=False)
+    vendor_name = Column(String(200), nullable=False)
+    company = Column(String(200))
+    phone = Column(String(50))
+    email = Column(String(200))
+    service_type = Column(String(100))  # photography, staging, inspection, repairs, cleaning, other
+    scheduled_date = Column(DateTime)
+    notes = Column(Text)  # prep instructions for the client
+    status = Column(String(50), default="upcoming")  # upcoming, confirmed, complete, cancelled
+    sort_order = Column(Integer, default=0)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    property = relationship("Property", back_populates="vendor_appointments")
 
 
 # ─── Auth ─────────────────────────────────────────────────────────────────────
@@ -552,6 +570,27 @@ class PendingMilestoneUpdate(BaseModel):
     due_date: Optional[date] = None
     status: Optional[str] = None
     notes: Optional[str] = None
+
+class VendorAppointmentCreate(BaseModel):
+    property_id: int
+    vendor_name: str
+    company: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    service_type: str = "other"
+    scheduled_date: Optional[datetime] = None
+    notes: Optional[str] = None
+    status: str = "upcoming"
+
+class VendorAppointmentUpdate(BaseModel):
+    vendor_name: Optional[str] = None
+    company: Optional[str] = None
+    phone: Optional[str] = None
+    email: Optional[str] = None
+    service_type: Optional[str] = None
+    scheduled_date: Optional[datetime] = None
+    notes: Optional[str] = None
+    status: Optional[str] = None
 
 
 # ─── App ──────────────────────────────────────────────────────────────────────
@@ -1087,7 +1126,13 @@ async def get_property(property_id: int, current_user: User = Depends(get_curren
             "section_type": s.section_type,
             "date_value": s.date_value.isoformat() if s.date_value else None,
             "items": [{"id": i.id, "title": i.title, "status": i.status} for i in sorted(s.items, key=lambda x: x.sort_order)]
-        } for s in sorted(prop.custom_sections, key=lambda x: x.sort_order)]
+        } for s in sorted(prop.custom_sections, key=lambda x: x.sort_order)],
+        "vendor_appointments": [{
+            "id": v.id, "vendor_name": v.vendor_name, "company": v.company,
+            "phone": v.phone, "email": v.email, "service_type": v.service_type,
+            "scheduled_date": v.scheduled_date.isoformat() if v.scheduled_date else None,
+            "notes": v.notes, "status": v.status
+        } for v in sorted(prop.vendor_appointments, key=lambda x: (x.scheduled_date or datetime.max, x.sort_order))]
     }
 
 @app.put("/api/properties/{property_id}")
@@ -1425,6 +1470,70 @@ async def delete_milestone(milestone_id: int, admin: User = Depends(require_admi
     db.delete(m)
     db.commit()
     return {"message": "Milestone deleted"}
+
+
+# ─── Vendor Appointment Routes ───────────────────────────────────────────────
+
+@app.get("/api/properties/{property_id}/vendors")
+async def get_vendors(property_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
+    if current_user.role == "client":
+        access = db.query(PropertyAccess).filter(
+            PropertyAccess.user_id == current_user.id,
+            PropertyAccess.property_id == property_id
+        ).first()
+        if not access:
+            raise HTTPException(status_code=403, detail="Access denied")
+    vendors = db.query(VendorAppointment).filter(
+        VendorAppointment.property_id == property_id
+    ).order_by(VendorAppointment.scheduled_date.asc().nullslast(), VendorAppointment.sort_order).all()
+    return [{
+        "id": v.id, "vendor_name": v.vendor_name, "company": v.company,
+        "phone": v.phone, "email": v.email, "service_type": v.service_type,
+        "scheduled_date": v.scheduled_date.isoformat() if v.scheduled_date else None,
+        "notes": v.notes, "status": v.status
+    } for v in vendors]
+
+
+@app.post("/api/properties/{property_id}/vendors")
+async def create_vendor(property_id: int, vendor: VendorAppointmentCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    max_order = db.query(VendorAppointment).filter(VendorAppointment.property_id == property_id).count()
+    v = VendorAppointment(
+        property_id=property_id,
+        vendor_name=vendor.vendor_name,
+        company=vendor.company,
+        phone=vendor.phone,
+        email=vendor.email,
+        service_type=vendor.service_type,
+        scheduled_date=vendor.scheduled_date,
+        notes=vendor.notes,
+        status=vendor.status,
+        sort_order=max_order
+    )
+    db.add(v)
+    db.commit()
+    db.refresh(v)
+    return {"id": v.id, "message": "Vendor appointment created"}
+
+
+@app.put("/api/vendors/{vendor_id}")
+async def update_vendor(vendor_id: int, vendor: VendorAppointmentUpdate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    v = db.query(VendorAppointment).filter(VendorAppointment.id == vendor_id).first()
+    if not v:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    for key, value in vendor.model_dump(exclude_unset=True).items():
+        setattr(v, key, value)
+    db.commit()
+    return {"message": "Vendor updated"}
+
+
+@app.delete("/api/vendors/{vendor_id}")
+async def delete_vendor(vendor_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    v = db.query(VendorAppointment).filter(VendorAppointment.id == vendor_id).first()
+    if not v:
+        raise HTTPException(status_code=404, detail="Vendor not found")
+    db.delete(v)
+    db.commit()
+    return {"message": "Vendor deleted"}
 
 
 # ─── Photo Upload Routes ─────────────────────────────────────────────────────
@@ -1923,7 +2032,13 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
             "section_type": s.section_type,
             "date_value": s.date_value.isoformat() if s.date_value else None,
             "items": [{"id": i.id, "title": i.title, "status": i.status} for i in sorted(s.items, key=lambda x: x.sort_order)]
-        } for s in sorted(prop.custom_sections, key=lambda x: x.sort_order)]
+        } for s in sorted(prop.custom_sections, key=lambda x: x.sort_order)],
+        "vendor_appointments": [{
+            "id": v.id, "vendor_name": v.vendor_name, "company": v.company,
+            "phone": v.phone, "email": v.email, "service_type": v.service_type,
+            "scheduled_date": v.scheduled_date.isoformat() if v.scheduled_date else None,
+            "notes": v.notes, "status": v.status
+        } for v in sorted(prop.vendor_appointments, key=lambda x: (x.scheduled_date or datetime.max, x.sort_order))]
     }
 
 

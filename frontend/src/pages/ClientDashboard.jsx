@@ -273,6 +273,108 @@ export default function ClientDashboard() {
                   )}
                 </div>
 
+                {/* Upcoming Vendor Appointments */}
+                {(data.vendor_appointments || []).filter(v => v.status !== 'cancelled' && v.status !== 'complete').length > 0 && (
+                  <div style={{ marginTop: '2rem' }}>
+                    <div className="section-header">
+                      <h2 className="section-title">Upcoming Appointments</h2>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+                      {(data.vendor_appointments || []).filter(v => v.status !== 'cancelled' && v.status !== 'complete').map(v => (
+                        <div key={v.id} style={{
+                          padding: '18px 22px', background: 'white', borderRadius: 12,
+                          border: '1px solid #F0F0EC',
+                          borderLeft: `4px solid ${v.status === 'confirmed' ? '#4A7C59' : '#B8926A'}`
+                        }}>
+                          <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: '1rem' }}>
+                            <div style={{ flex: 1 }}>
+                              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 4 }}>
+                                <span style={{ fontWeight: 600, fontSize: '1rem', color: '#1A1A1A' }}>{v.vendor_name}</span>
+                                {v.company && <span style={{ fontSize: '0.85rem', color: '#9B9B9B' }}>· {v.company}</span>}
+                              </div>
+                              <div style={{
+                                fontSize: '0.75rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
+                                padding: '2px 8px', borderRadius: 100, display: 'inline-block', marginBottom: 8,
+                                background: 'rgba(184, 146, 106, 0.08)', color: '#B8926A'
+                              }}>
+                                {v.service_type?.replace(/_/g, ' ')}
+                              </div>
+                              {v.scheduled_date && (
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: 4 }}>
+                                  <Calendar size={14} color="#9B9B9B" />
+                                  <span style={{ fontSize: '0.9rem', color: '#1A1A1A', fontWeight: 500 }}>
+                                    {new Date(v.scheduled_date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+                                  </span>
+                                  <span style={{ fontSize: '0.85rem', color: '#6B6B6B' }}>
+                                    at {new Date(v.scheduled_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                                  </span>
+                                </div>
+                              )}
+                              <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginTop: 4 }}>
+                                {v.phone && (
+                                  <a href={`tel:${v.phone}`} style={{ fontSize: '0.82rem', color: '#5B7FA5', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    📞 {v.phone}
+                                  </a>
+                                )}
+                                {v.email && (
+                                  <a href={`mailto:${v.email}`} style={{ fontSize: '0.82rem', color: '#5B7FA5', textDecoration: 'none', display: 'flex', alignItems: 'center', gap: 4 }}>
+                                    ✉ {v.email}
+                                  </a>
+                                )}
+                              </div>
+                            </div>
+                            {v.status === 'confirmed' && (
+                              <span style={{
+                                fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.04em',
+                                padding: '3px 10px', borderRadius: 100,
+                                background: 'rgba(74, 124, 89, 0.1)', color: '#4A7C59', flexShrink: 0
+                              }}>
+                                Confirmed
+                              </span>
+                            )}
+                          </div>
+                          {v.notes && (
+                            <div style={{
+                              marginTop: 10, padding: '10px 14px', background: '#FAFAF8',
+                              borderRadius: 8, fontSize: '0.85rem', color: '#6B6B6B',
+                              borderLeft: '3px solid #E0DCD4'
+                            }}>
+                              📋 {v.notes}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {/* Completed Vendor Appointments */}
+                {(data.vendor_appointments || []).filter(v => v.status === 'complete').length > 0 && (
+                  <div style={{ marginTop: '1.5rem' }}>
+                    <div className="section-header">
+                      <h2 className="section-title" style={{ fontSize: '0.95rem', color: '#9B9B9B' }}>Completed Visits</h2>
+                    </div>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+                      {(data.vendor_appointments || []).filter(v => v.status === 'complete').map(v => (
+                        <div key={v.id} style={{
+                          display: 'flex', alignItems: 'center', gap: '0.75rem',
+                          padding: '12px 18px', background: 'white', borderRadius: 10,
+                          border: '1px solid #F0F0EC', opacity: 0.6
+                        }}>
+                          <CheckCircle size={18} color="#4A7C59" />
+                          <div style={{ flex: 1 }}>
+                            <span style={{ fontWeight: 500, fontSize: '0.9rem', color: '#1A1A1A' }}>{v.vendor_name}</span>
+                            {v.company && <span style={{ fontSize: '0.82rem', color: '#9B9B9B' }}> · {v.company}</span>}
+                          </div>
+                          <span style={{ fontSize: '0.78rem', color: '#9B9B9B' }}>
+                            {v.scheduled_date && new Date(v.scheduled_date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
                 {/* Custom Sections for Pre-Market */}
                 {(data.custom_sections || []).filter(s => s.phase === 'pre_market').length > 0 && (
                   <div style={{ marginTop: '2rem' }}>
