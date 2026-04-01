@@ -28,6 +28,11 @@ export default function AdminPropertyDetail() {
   // CSV import
   const csvRef = useRef()
 
+  // ShowingTime PDF import
+  const showingTimeRef = useRef()
+  const [showingTimeImporting, setShowingTimeImporting] = useState(false)
+  const [showingTimeResult, setShowingTimeResult] = useState(null)
+
   // Edit activity modal
   const [editingActivity, setEditingActivity] = useState(null)
   const [editFeedback, setEditFeedback] = useState('')
@@ -192,6 +197,23 @@ export default function AdminPropertyDetail() {
       loadData()
     } catch (err) {
       alert(err.message)
+    }
+  }
+
+  const handleShowingTimeImport = async (e) => {
+    const file = e.target.files[0]
+    if (!file) return
+    setShowingTimeImporting(true)
+    setShowingTimeResult(null)
+    try {
+      const result = await api.importShowingTime(file)
+      setShowingTimeResult(result)
+      loadData()
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setShowingTimeImporting(false)
+      if (showingTimeRef.current) showingTimeRef.current.value = ''
     }
   }
 
@@ -556,14 +578,39 @@ export default function AdminPropertyDetail() {
         {/* ─── Activities Tab ─────────────────────────────────────────────── */}
         {tab === 'activities' && (
           <>
-            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem' }}>
+            <div style={{ display: 'flex', gap: '0.75rem', marginBottom: '1rem', flexWrap: 'wrap' }}>
               <button className="btn btn--primary" onClick={() => setShowActivityForm(true)}><Plus size={14} /> Add Activity</button>
+              <button className="btn btn--ghost" onClick={() => showingTimeRef.current?.click()} disabled={showingTimeImporting}>
+                <Upload size={14} /> {showingTimeImporting ? 'Importing...' : 'Import ShowingTime PDF'}
+              </button>
+              <input ref={showingTimeRef} type="file" accept=".pdf" style={{ display: 'none' }} onChange={handleShowingTimeImport} />
               <button className="btn btn--ghost" onClick={() => csvRef.current?.click()}><Upload size={14} /> Import CSV</button>
               <input ref={csvRef} type="file" accept=".csv" style={{ display: 'none' }} onChange={handleCSVImport} />
               {approvedNotPushed > 0 && (
                 <button className="btn btn--success" onClick={handlePushAll}><Send size={14} /> Push {approvedNotPushed} to Client</button>
               )}
             </div>
+
+            {/* ShowingTime Import Results */}
+            {showingTimeResult && (
+              <div className="admin-card" style={{ marginBottom: '1rem', borderColor: showingTimeResult.created > 0 ? 'var(--admin-success)' : 'var(--admin-warning)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                  <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem' }}>ShowingTime Import Results</h3>
+                  <button onClick={() => setShowingTimeResult(null)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer' }}><X size={16} /></button>
+                </div>
+                <div style={{ display: 'flex', gap: '1.5rem', marginBottom: '0.75rem', fontSize: '0.85rem' }}>
+                  <div><span style={{ fontWeight: 600, color: 'var(--admin-success)' }}>{showingTimeResult.created}</span> created</div>
+                  {showingTimeResult.skipped_cancelled > 0 && <div><span style={{ fontWeight: 600, color: 'var(--admin-text-muted)' }}>{showingTimeResult.skipped_cancelled}</span> cancelled (skipped)</div>}
+                  {showingTimeResult.skipped_duplicate > 0 && <div><span style={{ fontWeight: 600, color: 'var(--admin-text-muted)' }}>{showingTimeResult.skipped_duplicate}</span> duplicates (skipped)</div>}
+                  {showingTimeResult.skipped_no_match > 0 && <div><span style={{ fontWeight: 600, color: 'var(--admin-warning)' }}>{showingTimeResult.skipped_no_match}</span> no property match</div>}
+                </div>
+                {showingTimeResult.details?.length > 0 && (
+                  <div style={{ background: 'var(--admin-bg)', borderRadius: 6, padding: '8px 12px', fontSize: '0.78rem', color: 'var(--admin-text-secondary)', maxHeight: 150, overflow: 'auto', fontFamily: 'JetBrains Mono' }}>
+                    {showingTimeResult.details.map((d, i) => <div key={i}>{d}</div>)}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Activity Form */}
             {showActivityForm && (

@@ -79,7 +79,7 @@ class Property(Base):
     __tablename__ = "properties"
     id = Column(Integer, primary_key=True, index=True)
     address = Column(String(300), nullable=False)
-    street_number = Column(String(100))
+    street_number = Column(String(20))
     city = Column(String(100))
     state = Column(String(50), default="WA")
     zip_code = Column(String(20))
@@ -674,13 +674,6 @@ async def lifespan(app: FastAPI):
     with engine.connect() as conn:
         try:
             conn.execute(text("ALTER TABLE activities ADD COLUMN activity_end_date TIMESTAMP"))
-            conn.commit()
-        except Exception:
-            conn.rollback()
-    # Migrate: widen street_number column
-    with engine.connect() as conn:
-        try:
-            conn.execute(text("ALTER TABLE properties ALTER COLUMN street_number TYPE VARCHAR(100)"))
             conn.commit()
         except Exception:
             conn.rollback()

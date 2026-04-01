@@ -187,6 +187,15 @@ class ApiClient {
     });
   }
 
+  importShowingTime(file) {
+    const formData = new FormData();
+    formData.append('file', file);
+    return this.request('/activities/import-showingtime', {
+      method: 'POST',
+      body: formData,
+    });
+  }
+
   // Marketing
   getMarketing(propertyId) {
     const params = propertyId ? `?property_id=${propertyId}` : '';
