@@ -2051,7 +2051,7 @@ async def import_showingtime(
                 activity_type="showing",
                 activity_date=activity_date,
                 activity_end_date=activity_end_date,
-                brokerage=agent,
+                brokerage=None,  # ShowingTime only has agent names, not brokerages
                 visitor_count=1,
                 source="showingtime",
                 created_by=admin.username,
