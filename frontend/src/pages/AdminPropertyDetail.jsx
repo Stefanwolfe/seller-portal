@@ -454,6 +454,46 @@ export default function AdminPropertyDetail() {
     loadData()
   }
 
+  // ─── Property Edit ────────────────────────────────────────────────────
+  const [showPropertyEdit, setShowPropertyEdit] = useState(false)
+  const [propForm, setPropForm] = useState({})
+
+  const startEditProperty = () => {
+    setPropForm({
+      address: property.address || '',
+      city: property.city || '',
+      state: property.state || 'WA',
+      zip_code: property.zip_code || '',
+      mls_number: property.mls_number || '',
+      list_price: property.list_price || '',
+      list_date: property.list_date || '',
+      status: property.status || 'Active',
+      bedrooms: property.bedrooms || '',
+      bathrooms: property.bathrooms || '',
+      sqft: property.sqft || '',
+      description: property.description || '',
+    })
+    setShowPropertyEdit(true)
+  }
+
+  const handleSaveProperty = async () => {
+    const data = { ...propForm }
+    // Convert numeric fields
+    if (data.list_price) data.list_price = parseFloat(data.list_price) || null
+    if (data.bedrooms) data.bedrooms = parseInt(data.bedrooms) || null
+    if (data.bathrooms) data.bathrooms = parseFloat(data.bathrooms) || null
+    if (data.sqft) data.sqft = parseInt(data.sqft) || null
+    // Clear empty strings
+    Object.keys(data).forEach(k => { if (data[k] === '') data[k] = null })
+    try {
+      await api.updateProperty(id, data)
+      setShowPropertyEdit(false)
+      loadData()
+    } catch (err) {
+      alert(err.message)
+    }
+  }
+
   if (loading || !property) {
     return <div className="admin-portal"><AdminNav /><div className="admin-page" style={{ textAlign: 'center', paddingTop: '4rem', color: 'var(--admin-text-muted)' }}>Loading...</div></div>
   }
@@ -488,9 +528,14 @@ export default function AdminPropertyDetail() {
                 </button>
               </>
             ) : (
-              <button className="btn btn--ghost btn--small" onClick={() => setShowArchiveConfirm(true)}>
-                <Archive size={14} /> Archive
-              </button>
+              <>
+                <button className="btn btn--ghost btn--small" onClick={startEditProperty}>
+                  <Edit3 size={14} /> Edit Details
+                </button>
+                <button className="btn btn--ghost btn--small" onClick={() => setShowArchiveConfirm(true)}>
+                  <Archive size={14} /> Archive
+                </button>
+              </>
             )}
           </div>
         </div>
@@ -1691,6 +1736,88 @@ export default function AdminPropertyDetail() {
               )}
             </div>
           </>
+        )}
+
+        {/* ─── Property Edit Modal ──────────────────────────────────────── */}
+        {showPropertyEdit && (
+          <div className="modal-overlay" onClick={() => setShowPropertyEdit(false)}>
+            <div className="modal" onClick={e => e.stopPropagation()} style={{ maxWidth: 640 }}>
+              <div className="modal__header">
+                <h3 className="modal__title">Edit Property Details</h3>
+                <button className="modal__close" onClick={() => setShowPropertyEdit(false)}><X size={18} /></button>
+              </div>
+              <div className="modal__body">
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: '0.75rem' }}>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Address</label>
+                    <input className="form-input" value={propForm.address} onChange={e => setPropForm({...propForm, address: e.target.value})} />
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 80px 100px', gap: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">City</label>
+                      <input className="form-input" value={propForm.city} onChange={e => setPropForm({...propForm, city: e.target.value})} />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">State</label>
+                      <input className="form-input" value={propForm.state} onChange={e => setPropForm({...propForm, state: e.target.value})} />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Zip</label>
+                      <input className="form-input" value={propForm.zip_code} onChange={e => setPropForm({...propForm, zip_code: e.target.value})} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">MLS Number</label>
+                      <input className="form-input" value={propForm.mls_number} onChange={e => setPropForm({...propForm, mls_number: e.target.value})} placeholder="e.g. 2499816" style={{ fontFamily: 'JetBrains Mono' }} />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">List Price</label>
+                      <input className="form-input" type="number" value={propForm.list_price} onChange={e => setPropForm({...propForm, list_price: e.target.value})} placeholder="e.g. 1050000" style={{ fontFamily: 'JetBrains Mono' }} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Bedrooms</label>
+                      <input className="form-input" type="number" value={propForm.bedrooms} onChange={e => setPropForm({...propForm, bedrooms: e.target.value})} />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Bathrooms</label>
+                      <input className="form-input" type="number" step="0.5" value={propForm.bathrooms} onChange={e => setPropForm({...propForm, bathrooms: e.target.value})} />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Sqft</label>
+                      <input className="form-input" type="number" value={propForm.sqft} onChange={e => setPropForm({...propForm, sqft: e.target.value})} />
+                    </div>
+                  </div>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem' }}>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">List Date</label>
+                      <input className="form-input" type="date" value={propForm.list_date} onChange={e => setPropForm({...propForm, list_date: e.target.value})} />
+                    </div>
+                    <div className="form-group" style={{ margin: 0 }}>
+                      <label className="form-label">Status</label>
+                      <select className="form-select" value={propForm.status} onChange={e => setPropForm({...propForm, status: e.target.value})}>
+                        <option value="Coming Soon">Coming Soon</option>
+                        <option value="Active">Active</option>
+                        <option value="Pending">Pending</option>
+                        <option value="Sold">Sold</option>
+                        <option value="Withdrawn">Withdrawn</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div className="form-group" style={{ margin: 0 }}>
+                    <label className="form-label">Description</label>
+                    <textarea className="form-textarea" value={propForm.description} onChange={e => setPropForm({...propForm, description: e.target.value})} rows={3} placeholder="Property description..." />
+                  </div>
+                </div>
+              </div>
+              <div className="modal__footer">
+                <button className="btn btn--ghost" onClick={() => setShowPropertyEdit(false)}>Cancel</button>
+                <button className="btn btn--primary" onClick={handleSaveProperty}>Save Changes</button>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* ─── Archive Confirmation Modal ─────────────────────────────────── */}
