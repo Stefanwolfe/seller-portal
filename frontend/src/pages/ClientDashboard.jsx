@@ -73,6 +73,7 @@ export default function ClientDashboard() {
   const [loading, setLoading] = useState(true)
   const [selectedProperty, setSelectedProperty] = useState(null)
   const [breakdownPeriod, setBreakdownPeriod] = useState('this_week')
+  const [trendPeriod, setTrendPeriod] = useState('month')
   const [lightboxIdx, setLightboxIdx] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
 
@@ -639,24 +640,53 @@ export default function ClientDashboard() {
                     )}
                   </div>
 
-                  {/* Weekly Trend */}
+                  {/* Activity Trend */}
                   <div className="chart-card">
-                    <div className="chart-card__title">Weekly Trend</div>
-                    <ResponsiveContainer width="100%" height={240}>
-                      <AreaChart data={data.weekly_trend}>
-                        <defs>
-                          <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#B8926A" stopOpacity={0.15} />
-                            <stop offset="100%" stopColor="#B8926A" stopOpacity={0} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#F0F0EC" />
-                        <XAxis dataKey="week" tick={{ fontSize: 11, fill: '#9B9B9B', fontFamily: 'JetBrains Mono' }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11, fill: '#9B9B9B', fontFamily: 'JetBrains Mono' }} axisLine={false} tickLine={false} allowDecimals={false} />
-                        <Tooltip content={<CustomTooltip />} />
-                        <Area type="monotone" dataKey="visitors" stroke="#B8926A" strokeWidth={2} fill="url(#areaGrad)" dot={{ fill: '#B8926A', r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }} />
-                      </AreaChart>
-                    </ResponsiveContainer>
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '1rem' }}>
+                      <div className="chart-card__title" style={{ margin: 0 }}>Activity Trend</div>
+                      <div className="section-toggle" style={{ marginBottom: 0 }}>
+                        {[
+                          { id: 'week', label: 'Week' },
+                          { id: 'month', label: 'Month' },
+                          { id: 'all', label: 'All' },
+                        ].map(p => (
+                          <button
+                            key={p.id}
+                            className={`section-toggle__btn ${trendPeriod === p.id ? 'section-toggle__btn--active' : ''}`}
+                            onClick={() => setTrendPeriod(p.id)}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    {(() => {
+                      const trendData = trendPeriod === 'week' ? (data.daily_trend || [])
+                        : trendPeriod === 'all' ? (data.monthly_trend || data.weekly_trend || [])
+                        : (data.weekly_trend || [])
+                      if (!trendData.length) return (
+                        <div className="empty-state" style={{ padding: '2rem' }}>
+                          <div className="empty-state__text">No trend data for this period</div>
+                        </div>
+                      )
+                      return (
+                        <ResponsiveContainer width="100%" height={240}>
+                          <AreaChart data={trendData}>
+                            <defs>
+                              <linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+                                <stop offset="0%" stopColor="#B8926A" stopOpacity={0.15} />
+                                <stop offset="100%" stopColor="#B8926A" stopOpacity={0} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#F0F0EC" />
+                            <XAxis dataKey="label" tick={{ fontSize: 11, fill: '#9B9B9B', fontFamily: 'JetBrains Mono' }} axisLine={false} tickLine={false} />
+                            <YAxis tick={{ fontSize: 11, fill: '#9B9B9B', fontFamily: 'JetBrains Mono' }} axisLine={false} tickLine={false} allowDecimals={false} />
+                            <Tooltip content={<CustomTooltip />} />
+                            <Area type="monotone" dataKey="visitors" stroke="#B8926A" strokeWidth={2} fill="url(#areaGrad)" dot={{ fill: '#B8926A', r: 4, strokeWidth: 0 }} activeDot={{ r: 6 }} />
+                          </AreaChart>
+                        </ResponsiveContainer>
+                      )
+                    })()}
                   </div>
                 </div>
 

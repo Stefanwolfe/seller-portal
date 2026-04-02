@@ -2252,8 +2252,8 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
 
     # Time calculations
     now = datetime.utcnow()
-    week_start = now - timedelta(days=now.weekday())
-    month_start = now.replace(day=1)
+    week_start = now - timedelta(days=7)
+    month_start = now - timedelta(days=30)
 
     def count_by_period(activities, start):
         return len([a for a in activities if a.activity_date >= start])
@@ -2275,17 +2275,44 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
 
     days_on_market = (date.today() - prop.list_date).days if prop.list_date else 0
 
-    # Weekly activity over time (last 8 weeks)
+    # Daily trend (last 14 days — for "week" view on chart)
+    daily_data = []
+    for i in range(13, -1, -1):
+        day = now - timedelta(days=i)
+        day_start = day.replace(hour=0, minute=0, second=0, microsecond=0)
+        day_end = day_start + timedelta(days=1)
+        day_acts = [a for a in all_activities if day_start <= a.activity_date < day_end]
+        daily_data.append({
+            "label": day_start.strftime("%b %d"),
+            "count": len(day_acts),
+            "visitors": sum(a.visitor_count or 1 for a in day_acts)
+        })
+
+    # Weekly trend (last 8 weeks — for "month" view on chart)
     weekly_data = []
     for i in range(7, -1, -1):
         week_end = now - timedelta(weeks=i)
         week_begin = week_end - timedelta(weeks=1)
         week_acts = [a for a in all_activities if week_begin <= a.activity_date < week_end]
         weekly_data.append({
-            "week": week_begin.strftime("%b %d"),
+            "label": week_begin.strftime("%b %d"),
             "count": len(week_acts),
             "visitors": sum(a.visitor_count or 1 for a in week_acts)
         })
+
+    # Monthly trend (all time — for "all" view on chart)
+    monthly_data = []
+    if prop.list_date:
+        cursor = datetime(prop.list_date.year, prop.list_date.month, 1)
+        while cursor <= now:
+            next_month = (cursor.replace(day=28) + timedelta(days=4)).replace(day=1)
+            month_acts = [a for a in all_activities if cursor <= a.activity_date < next_month]
+            monthly_data.append({
+                "label": cursor.strftime("%b %Y"),
+                "count": len(month_acts),
+                "visitors": sum(a.visitor_count or 1 for a in month_acts)
+            })
+            cursor = next_month
 
     # Recent activity feed
     recent = [{
@@ -2338,6 +2365,8 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
             "all_time": count_by_type(all_activities),
         },
         "weekly_trend": weekly_data,
+        "daily_trend": daily_data,
+        "monthly_trend": monthly_data,
         "recent_activity": recent,
         "marketing": [{
             "id": m.id,
