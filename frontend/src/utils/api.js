@@ -368,6 +368,15 @@ class ApiClient {
     return this.request(`/gallery-links/${linkId}`, { method: 'DELETE' });
   }
 
+  // TC Engine
+  toggleTCEngine(propertyId) {
+    return this.request(`/properties/${propertyId}/tc-engine-toggle`, { method: 'PUT' });
+  }
+
+  fetchTCEngineData(propertyId) {
+    return this.request(`/properties/${propertyId}/tc-engine-data`);
+  }
+
   // Clients
   getClients() {
     return this.request('/clients');

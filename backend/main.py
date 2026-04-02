@@ -113,6 +113,7 @@ class Property(Base):
     inspection_response_date = Column(Date)
     earnest_money_date = Column(Date)
     closing_date = Column(Date)
+    show_tc_engine = Column(Boolean, default=False)  # Admin toggle: show TC Engine data to clients
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # Relationships
@@ -651,6 +652,7 @@ async def lifespan(app: FastAPI):
                 "earnest_money_date": "DATE",
                 "closing_date": "DATE",
                 "updated_at": "TIMESTAMP",
+                "show_tc_engine": "BOOLEAN DEFAULT FALSE",
             }
             for col, col_type in props_to_add.items():
                 if not has_column("properties", col):
@@ -1273,6 +1275,25 @@ async def toggle_inspection_response(property_id: int, toggle: InspectionToggle,
         "message": "Inspection toggle updated",
         "response_date": db_prop.inspection_response_date.isoformat() if db_prop.inspection_response_date else None
     }
+
+
+@app.put("/api/properties/{property_id}/tc-engine-toggle")
+async def toggle_tc_engine(property_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    db_prop = db.query(Property).filter(Property.id == property_id).first()
+    if not db_prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    db_prop.show_tc_engine = not (db_prop.show_tc_engine or False)
+    db.commit()
+    return {"message": f"TC Engine {'visible' if db_prop.show_tc_engine else 'hidden'} to clients", "show_tc_engine": db_prop.show_tc_engine}
+
+
+@app.get("/api/properties/{property_id}/tc-engine-data")
+async def get_tc_engine_data(property_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    prop = db.query(Property).filter(Property.id == property_id).first()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    data = fetch_tc_engine_data(prop.mls_number)
+    return {"tc_engine": data, "show_tc_engine": prop.show_tc_engine or False}
 
 
 # ─── Custom Section Routes ───────────────────────────────────────────────────
@@ -2457,6 +2478,7 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
             "inspection_response_date": prop.inspection_response_date.isoformat() if prop.inspection_response_date else None,
             "earnest_money_date": prop.earnest_money_date.isoformat() if prop.earnest_money_date else None,
             "closing_date": prop.closing_date.isoformat() if prop.closing_date else None,
+            "show_tc_engine": prop.show_tc_engine or False,
         },
         "stats": {
             "total_activities": len(all_activities),
@@ -2525,7 +2547,7 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
         "gallery_links": [{
             "id": l.id, "title": l.title, "url": l.url
         } for l in sorted(prop.gallery_links, key=lambda x: x.sort_order)],
-        "tc_engine": fetch_tc_engine_data(prop.mls_number) if (prop.phase == "pending" and prop.mls_number) else None,
+        "tc_engine": fetch_tc_engine_data(prop.mls_number) if (prop.phase == "pending" and prop.mls_number and (current_user.role == "admin" or prop.show_tc_engine)) else None,
     }
 
 

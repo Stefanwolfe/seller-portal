@@ -460,6 +460,23 @@ export default function AdminPropertyDetail() {
   const [showGalleryForm, setShowGalleryForm] = useState(false)
   const [galleryForm, setGalleryForm] = useState({ title: '', url: '' })
 
+  // TC Engine
+  const [tcData, setTcData] = useState(null)
+  const [tcLoading, setTcLoading] = useState(false)
+
+  useEffect(() => {
+    if (property?.phase === 'pending' && property?.mls_number && tab === 'milestones') {
+      setTcLoading(true)
+      api.fetchTCEngineData(id).then(setTcData).catch(() => setTcData(null)).finally(() => setTcLoading(false))
+    }
+  }, [property?.phase, property?.mls_number, tab])
+
+  const handleToggleTCEngine = async () => {
+    const result = await api.toggleTCEngine(id)
+    setTcData(prev => prev ? { ...prev, show_tc_engine: result.show_tc_engine } : prev)
+    loadData()
+  }
+
   const startEditProperty = () => {
     setPropForm({
       address: property.address || '',
@@ -1797,6 +1814,146 @@ export default function AdminPropertyDetail() {
                 </div>
               )}
             </div>
+
+            {/* ─── TC Engine Data ──────────────────────────────────────────── */}
+            {property.mls_number && (
+              <div className="admin-card" style={{ marginTop: '1rem' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                  <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem' }}>Transaction Engine</h3>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                    {tcData?.tc_engine && (
+                      <button
+                        className={`btn btn--small ${tcData.show_tc_engine ? 'btn--success' : 'btn--ghost'}`}
+                        onClick={handleToggleTCEngine}
+                        style={tcData.show_tc_engine ? { background: '#4A7C59', borderColor: '#4A7C59', color: 'white' } : {}}
+                      >
+                        {tcData.show_tc_engine ? '✓ Visible to Client' : 'Push to Client'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {tcLoading && (
+                  <div style={{ padding: '1rem', color: 'var(--admin-text-muted)', fontSize: '0.85rem' }}>Loading TC Engine data...</div>
+                )}
+
+                {!tcLoading && !tcData?.tc_engine && (
+                  <div style={{ padding: '1rem', color: 'var(--admin-text-muted)', fontSize: '0.85rem' }}>
+                    {property.mls_number
+                      ? `No transaction found in TC Engine for MLS #${property.mls_number}. Upload a contract in the TC Engine to connect.`
+                      : 'Add an MLS number to this property to connect to the TC Engine.'}
+                  </div>
+                )}
+
+                {!tcLoading && tcData?.tc_engine && (() => {
+                  const tc = tcData.tc_engine
+                  const summary = tc.task_summary || {}
+                  const pct = summary.total > 0 ? Math.round((summary.completed / summary.total) * 100) : 0
+                  return (
+                    <div>
+                      {/* Status bar */}
+                      <div style={{ display: 'flex', gap: '1rem', marginBottom: '0.75rem', fontSize: '0.82rem', flexWrap: 'wrap' }}>
+                        <span style={{ color: 'var(--admin-text-secondary)' }}>Status: <strong>{tc.status}</strong></span>
+                        <span style={{ color: 'var(--admin-text-secondary)' }}>Side: <strong>{tc.representation}</strong></span>
+                        <span style={{ color: 'var(--admin-text-secondary)' }}>Tasks: <strong>{summary.completed}/{summary.total}</strong> ({pct}%)</span>
+                        {summary.overdue > 0 && <span style={{ color: '#d32f2f', fontWeight: 600 }}>{summary.overdue} overdue</span>}
+                      </div>
+
+                      {/* Progress bar */}
+                      <div style={{ height: 6, background: 'var(--admin-bg)', borderRadius: 3, overflow: 'hidden', marginBottom: '1rem' }}>
+                        <div style={{ height: '100%', width: `${pct}%`, background: 'var(--admin-gold)', borderRadius: 3 }} />
+                      </div>
+
+                      {/* Compliance flags */}
+                      {tc.compliance_flags?.length > 0 && (
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          {tc.compliance_flags.map((f, i) => (
+                            <div key={i} style={{
+                              padding: '8px 12px', borderRadius: 6, marginBottom: '0.35rem', fontSize: '0.82rem',
+                              background: f.severity === 'critical' ? 'rgba(211,47,47,0.06)' : f.severity === 'warning' ? 'rgba(200,169,126,0.08)' : 'rgba(91,127,165,0.06)',
+                              border: `1px solid ${f.severity === 'critical' ? 'rgba(211,47,47,0.15)' : f.severity === 'warning' ? 'rgba(200,169,126,0.15)' : 'rgba(91,127,165,0.15)'}`,
+                              display: 'flex', alignItems: 'center', gap: '0.5rem'
+                            }}>
+                              <div style={{ width: 6, height: 6, borderRadius: '50%', background: f.severity === 'critical' ? '#d32f2f' : f.severity === 'warning' ? '#C8A97E' : '#5B7FA5', flexShrink: 0 }} />
+                              <strong>{f.title}</strong>
+                              {f.description && <span style={{ color: 'var(--admin-text-muted)' }}>— {f.description}</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Critical dates */}
+                      {tc.critical_dates?.length > 0 && (
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--admin-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.35rem' }}>Key Dates</div>
+                          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(150px, 1fr))', gap: '0.5rem' }}>
+                            {tc.critical_dates.filter(d => d.date_value).map((d, i) => {
+                              const days = Math.ceil((new Date(d.date_value + 'T00:00') - new Date()) / 86400000)
+                              return (
+                                <div key={i} style={{ padding: '8px 10px', background: 'var(--admin-bg)', borderRadius: 6, fontSize: '0.82rem' }}>
+                                  <div style={{ color: 'var(--admin-text-muted)', fontSize: '0.72rem', textTransform: 'uppercase' }}>{d.date_type?.replace(/_/g, ' ')}</div>
+                                  <div style={{ fontWeight: 600, fontFamily: 'JetBrains Mono', fontSize: '0.82rem' }}>{new Date(d.date_value + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</div>
+                                  <div style={{ fontSize: '0.7rem', color: days < 0 ? '#d32f2f' : 'var(--admin-text-muted)' }}>{days < 0 ? `${Math.abs(days)}d ago` : `${days}d away`}</div>
+                                </div>
+                              )
+                            })}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Contingencies */}
+                      {tc.contingencies?.length > 0 && (
+                        <div style={{ marginBottom: '0.75rem' }}>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--admin-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.35rem' }}>Contingencies</div>
+                          {tc.contingencies.map((c, i) => (
+                            <div key={i} style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', padding: '6px 0', fontSize: '0.82rem', borderBottom: '1px solid var(--admin-border)' }}>
+                              <span style={{ flex: 1, color: 'var(--admin-text)' }}>{c.type?.replace(/_/g, ' ')}</span>
+                              {c.deadline && <span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.78rem', color: 'var(--admin-text-muted)' }}>{new Date(c.deadline + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                              {c.days && <span style={{ fontSize: '0.72rem', color: 'var(--admin-text-muted)' }}>{c.days}d</span>}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+
+                      {/* Tasks by category */}
+                      {tc.tasks?.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--admin-text-muted)', textTransform: 'uppercase', letterSpacing: '0.04em', marginBottom: '0.35rem' }}>Tasks</div>
+                          {(() => {
+                            const cats = {}
+                            tc.tasks.forEach(t => { const c = t.category || 'Other'; if (!cats[c]) cats[c] = []; cats[c].push(t) })
+                            return Object.entries(cats).map(([cat, tasks]) => (
+                              <div key={cat} style={{ marginBottom: '0.5rem' }}>
+                                <div style={{ fontSize: '0.78rem', fontWeight: 500, color: 'var(--admin-gold)', marginBottom: '0.25rem' }}>{cat} ({tasks.filter(t => t.status === 'completed').length}/{tasks.length})</div>
+                                {tasks.map((t, i) => (
+                                  <div key={i} style={{
+                                    display: 'flex', alignItems: 'center', gap: '0.5rem', padding: '4px 8px', fontSize: '0.8rem',
+                                    opacity: t.status === 'completed' ? 0.5 : 1,
+                                    color: t.status === 'overdue' ? '#d32f2f' : 'var(--admin-text)',
+                                    textDecoration: t.status === 'completed' ? 'line-through' : 'none'
+                                  }}>
+                                    <div style={{
+                                      width: 14, height: 14, borderRadius: 3, flexShrink: 0,
+                                      border: t.status === 'completed' ? 'none' : t.status === 'overdue' ? '2px solid #d32f2f' : '2px solid var(--admin-border)',
+                                      background: t.status === 'completed' ? '#4A7C59' : 'transparent',
+                                      display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                    }}>
+                                      {t.status === 'completed' && <Check size={10} color="#fff" />}
+                                    </div>
+                                    <span style={{ flex: 1 }}>{t.name}</span>
+                                    {t.due_date && <span style={{ fontFamily: 'JetBrains Mono', fontSize: '0.7rem', color: t.status === 'overdue' ? '#d32f2f' : 'var(--admin-text-muted)' }}>{new Date(t.due_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</span>}
+                                  </div>
+                                ))}
+                              </div>
+                            ))
+                          })()}
+                        </div>
+                      )}
+                    </div>
+                  )
+                })()}
+              </div>
+            )}
           </>
         )}
 
