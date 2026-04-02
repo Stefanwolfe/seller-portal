@@ -160,14 +160,18 @@ function ActivityCarousel({ title, activities, color = '#B8926A' }) {
 
 // ─── Activity Detail Card (vertical scroll) ─────────────────────────────────
 
-function ActivityDetailCard({ act, color = '#B8926A' }) {
+function ActivityDetailCard({ act, color = '#B8926A', onClick }) {
   const start = new Date(act.date)
   const hasEnd = act.end_date
   return (
-    <div style={{
+    <div onClick={() => onClick && onClick(act)} style={{
       background: 'white', borderRadius: 10, border: '1px solid #F0F0EC',
-      borderLeft: `4px solid ${color}`, padding: '16px 20px', marginBottom: '0.75rem'
-    }}>
+      borderLeft: `4px solid ${color}`, padding: '16px 20px', marginBottom: '0.75rem',
+      cursor: onClick ? 'pointer' : 'default', transition: 'box-shadow 0.15s, transform 0.15s',
+    }}
+      onMouseOver={e => { if (onClick) { e.currentTarget.style.boxShadow = '0 4px 16px rgba(0,0,0,0.08)'; e.currentTarget.style.transform = 'translateY(-1px)' } }}
+      onMouseOut={e => { e.currentTarget.style.boxShadow = 'none'; e.currentTarget.style.transform = 'none' }}
+    >
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
         <div>
           <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#1A1A1A', marginBottom: 2 }}>
@@ -190,7 +194,8 @@ function ActivityDetailCard({ act, color = '#B8926A' }) {
       {act.feedback && (
         <div style={{
           fontSize: '0.85rem', color: '#4A4A4A', lineHeight: 1.5, marginTop: 8,
-          padding: '10px 14px', background: '#FAFAF8', borderRadius: 8, borderLeft: '3px solid #E0DCD4'
+          padding: '10px 14px', background: '#FAFAF8', borderRadius: 8, borderLeft: '3px solid #E0DCD4',
+          maxHeight: 60, overflow: 'hidden'
         }}>
           {act.feedback}
         </div>
@@ -199,16 +204,170 @@ function ActivityDetailCard({ act, color = '#B8926A' }) {
   )
 }
 
+// ─── Activity Modal ─────────────────────────────────────────────────────────
+
+function ActivityModal({ act, onClose }) {
+  if (!act) return null
+  const start = new Date(act.date)
+  const hasEnd = act.end_date
+  const isOpen = act.type === 'open_house' || act.type === 'broker_open'
+  const color = isOpen ? '#5B7FA5' : act.type === 'agent_preview' ? '#8B6F47' : '#B8926A'
+
+  return (
+    <div onClick={onClose} style={{
+      position: 'fixed', inset: 0, zIndex: 1000,
+      background: 'linear-gradient(180deg, rgba(0,0,0,0.3) 0%, rgba(0,0,0,0.5) 100%)',
+      backdropFilter: 'blur(4px)', display: 'flex', alignItems: 'center', justifyContent: 'center',
+      padding: '2rem', animation: 'fadeIn 0.15s ease'
+    }}>
+      <div onClick={e => e.stopPropagation()} style={{
+        background: 'white', borderRadius: 16, maxWidth: 480, width: '100%',
+        boxShadow: '0 24px 48px rgba(0,0,0,0.15)', overflow: 'hidden',
+        animation: 'slideUp 0.2s ease'
+      }}>
+        {/* Header */}
+        <div style={{
+          padding: '20px 24px', borderBottom: '1px solid #F0F0EC',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+            <div style={{ width: 4, height: 32, borderRadius: 2, background: color }} />
+            <div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.06em', color, marginBottom: 2 }}>
+                {ACTIVITY_LABELS[act.type] || act.type?.replace(/_/g, ' ')}
+              </div>
+              <div style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.25rem', fontWeight: 500, color: '#1A1A1A' }}>
+                {start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' })}
+              </div>
+            </div>
+          </div>
+          <button onClick={onClose} style={{
+            width: 32, height: 32, borderRadius: 8, border: 'none', background: '#F5F5F2',
+            cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#9B9B9B',
+            flexShrink: 0
+          }}>
+            <X size={16} />
+          </button>
+        </div>
+
+        {/* Body */}
+        <div style={{ padding: '20px 24px' }}>
+          <div style={{ display: 'flex', gap: '2rem', marginBottom: 16 }}>
+            <div>
+              <div style={{ fontSize: '0.72rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500, marginBottom: 2 }}>Time</div>
+              <div style={{ fontSize: '0.95rem', fontWeight: 500, color: '#1A1A1A' }}>
+                {start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                {hasEnd && ` – ${new Date(act.end_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
+              </div>
+            </div>
+            {act.visitor_count > 1 && (
+              <div>
+                <div style={{ fontSize: '0.72rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500, marginBottom: 2 }}>Visitors</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 500, color: '#1A1A1A' }}>{act.visitor_count}</div>
+              </div>
+            )}
+            {act.brokerage && (
+              <div>
+                <div style={{ fontSize: '0.72rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500, marginBottom: 2 }}>Brokerage</div>
+                <div style={{ fontSize: '0.95rem', fontWeight: 500, color: '#1A1A1A' }}>{act.brokerage}</div>
+              </div>
+            )}
+          </div>
+
+          {act.feedback ? (
+            <div>
+              <div style={{ fontSize: '0.72rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500, marginBottom: 8 }}>Feedback</div>
+              <div style={{
+                fontSize: '0.95rem', color: '#2C2C2C', lineHeight: 1.7,
+                padding: '16px 18px', background: '#FAFAF8', borderRadius: 10,
+                borderLeft: `4px solid ${color}`
+              }}>
+                {act.feedback}
+              </div>
+            </div>
+          ) : (
+            <div style={{ textAlign: 'center', padding: '1.5rem 0', color: '#9B9B9B', fontSize: '0.88rem', fontFamily: 'Cormorant Garamond, serif' }}>
+              No feedback received yet
+            </div>
+          )}
+        </div>
+      </div>
+      <style>{`
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        @keyframes slideUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+      `}</style>
+    </div>
+  )
+}
+
 // ─── Calendar View ──────────────────────────────────────────────────────────
 
-function CalendarView({ activities }) {
+const CAL_COLORS = {
+  showing: { bg: 'rgba(184,146,106,0.15)', text: '#B8926A', label: 'Showing' },
+  agent_preview: { bg: 'rgba(139,111,71,0.15)', text: '#8B6F47', label: 'Preview' },
+  open_house: { bg: 'rgba(91,127,165,0.15)', text: '#5B7FA5', label: 'Open House' },
+  broker_open: { bg: 'rgba(74,124,89,0.15)', text: '#4A7C59', label: 'Broker Open' },
+}
+
+function CalendarView({ activities, onActivityClick }) {
   const [calView, setCalView] = useState('week')
   const now = new Date()
   const [weekOffset, setWeekOffset] = useState(0)
   const [monthDate, setMonthDate] = useState(new Date(now.getFullYear(), now.getMonth(), 1))
 
+  const renderDayCell = (date, dayActs, minHeight = 72) => {
+    const isToday = date.toDateString() === now.toDateString()
+    const hasActs = dayActs.length > 0
+    return (
+      <div style={{
+        background: hasActs ? 'rgba(184,146,106,0.03)' : 'white',
+        border: `1px solid ${isToday ? '#B8926A' : '#F0F0EC'}`,
+        borderRadius: calView === 'week' ? 8 : 6, padding: calView === 'week' ? '8px 6px' : '4px 4px', minHeight, position: 'relative'
+      }}>
+        <div style={{ fontSize: calView === 'week' ? '0.8rem' : '0.72rem', fontWeight: isToday ? 700 : 400, color: isToday ? '#B8926A' : '#1A1A1A', marginBottom: calView === 'week' ? 4 : 2 }}>
+          {date.getDate()}
+        </div>
+        {dayActs.slice(0, calView === 'week' ? 4 : 2).map((a, ai) => {
+          const c = CAL_COLORS[a.type] || CAL_COLORS.showing
+          return (
+            <div key={ai} onClick={(e) => { e.stopPropagation(); onActivityClick && onActivityClick(a) }} style={{
+              fontSize: calView === 'week' ? '0.68rem' : '0.6rem', padding: calView === 'week' ? '3px 5px' : '1px 3px',
+              borderRadius: 3, marginBottom: calView === 'week' ? 3 : 1,
+              background: c.bg, color: c.text,
+              fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
+              cursor: 'pointer', transition: 'opacity 0.1s'
+            }}
+              onMouseOver={e => e.currentTarget.style.opacity = '0.7'}
+              onMouseOut={e => e.currentTarget.style.opacity = '1'}
+            >
+              {new Date(a.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+            </div>
+          )
+        })}
+        {dayActs.length > (calView === 'week' ? 4 : 2) && (
+          <div style={{ fontSize: '0.58rem', color: '#9B9B9B' }}>+{dayActs.length - (calView === 'week' ? 4 : 2)} more</div>
+        )}
+      </div>
+    )
+  }
+
+  // Legend
+  const legend = (
+    <div style={{ display: 'flex', gap: '1rem', flexWrap: 'wrap', marginBottom: '0.75rem' }}>
+      {Object.entries(CAL_COLORS).map(([type, c]) => {
+        const hasType = (activities || []).some(a => a.type === type)
+        if (!hasType) return null
+        return (
+          <div key={type} style={{ display: 'flex', alignItems: 'center', gap: '0.35rem', fontSize: '0.72rem', color: '#6B6B6B' }}>
+            <div style={{ width: 10, height: 10, borderRadius: 2, background: c.bg, border: `1px solid ${c.text}30` }} />
+            {c.label}
+          </div>
+        )
+      })}
+    </div>
+  )
+
   if (calView === 'week') {
-    // Get the start of the current week + offset
     const today = new Date()
     const dayOfWeek = today.getDay()
     const weekStart = new Date(today)
@@ -231,43 +390,20 @@ function CalendarView({ activities }) {
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <button onClick={() => setWeekOffset(w => w - 1)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9B9B9B', padding: 4 }}><ChevronLeft size={18} /></button>
-            <span style={{ fontSize: '0.9rem', fontWeight: 500, color: '#1A1A1A', minWidth: 180, textAlign: 'center' }}>{weekLabel}</span>
+            <span style={{ fontSize: '0.9rem', fontWeight: 500, color: '#1A1A1A', minWidth: 200, textAlign: 'center' }}>{weekLabel}</span>
             <button onClick={() => setWeekOffset(w => w + 1)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9B9B9B', padding: 4 }}><ChevronRight size={18} /></button>
           </div>
           <div style={{ display: 'flex', background: '#F5F5F2', borderRadius: 6, padding: 2 }}>
-            <button onClick={() => setCalView('week')} style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: calView === 'week' ? 'white' : 'none', color: '#1A1A1A', fontWeight: calView === 'week' ? 600 : 400, boxShadow: calView === 'week' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none' }}>Week</button>
-            <button onClick={() => setCalView('month')} style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: calView === 'month' ? 'white' : 'none', color: '#1A1A1A', fontWeight: calView === 'month' ? 600 : 400, boxShadow: calView === 'month' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none' }}>Month</button>
+            <button onClick={() => setCalView('week')} style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: 'white', color: '#1A1A1A', fontWeight: 600, boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}>Week</button>
+            <button onClick={() => setCalView('month')} style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: 'none', color: '#1A1A1A', fontWeight: 400 }}>Month</button>
           </div>
         </div>
+        {legend}
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
           {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
             <div key={d} style={{ textAlign: 'center', fontSize: '0.7rem', color: '#9B9B9B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 0' }}>{d}</div>
           ))}
-          {days.map((d, i) => {
-            const isToday = d.date.toDateString() === now.toDateString()
-            const hasActs = d.activities.length > 0
-            return (
-              <div key={i} style={{
-                background: hasActs ? 'rgba(184,146,106,0.06)' : 'white',
-                border: `1px solid ${isToday ? '#B8926A' : '#F0F0EC'}`,
-                borderRadius: 8, padding: '8px 6px', minHeight: 72, position: 'relative'
-              }}>
-                <div style={{ fontSize: '0.8rem', fontWeight: isToday ? 700 : 400, color: isToday ? '#B8926A' : '#1A1A1A', marginBottom: 4 }}>
-                  {d.date.getDate()}
-                </div>
-                {d.activities.map((a, ai) => (
-                  <div key={ai} style={{
-                    fontSize: '0.65rem', padding: '2px 4px', borderRadius: 3, marginBottom: 2,
-                    background: a.type === 'open_house' || a.type === 'broker_open' ? 'rgba(91,127,165,0.12)' : 'rgba(184,146,106,0.12)',
-                    color: a.type === 'open_house' || a.type === 'broker_open' ? '#5B7FA5' : '#B8926A',
-                    fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                  }}>
-                    {new Date(a.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                  </div>
-                ))}
-              </div>
-            )
-          })}
+          {days.map((d, i) => <div key={i}>{renderDayCell(d.date, d.activities)}</div>)}
         </div>
       </div>
     )
@@ -298,42 +434,18 @@ function CalendarView({ activities }) {
           <button onClick={() => setMonthDate(new Date(year, month + 1, 1))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9B9B9B', padding: 4 }}><ChevronRight size={18} /></button>
         </div>
         <div style={{ display: 'flex', background: '#F5F5F2', borderRadius: 6, padding: 2 }}>
-          <button onClick={() => setCalView('week')} style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: calView === 'week' ? 'white' : 'none', color: '#1A1A1A', fontWeight: calView === 'week' ? 600 : 400, boxShadow: calView === 'week' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none' }}>Week</button>
-          <button onClick={() => setCalView('month')} style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: calView === 'month' ? 'white' : 'none', color: '#1A1A1A', fontWeight: calView === 'month' ? 600 : 400, boxShadow: calView === 'month' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none' }}>Month</button>
+          <button onClick={() => setCalView('week')} style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: 'none', color: '#1A1A1A', fontWeight: 400 }}>Week</button>
+          <button onClick={() => setCalView('month')} style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: 'white', color: '#1A1A1A', fontWeight: 600, boxShadow: '0 1px 2px rgba(0,0,0,0.06)' }}>Month</button>
         </div>
       </div>
+      {legend}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px' }}>
         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
           <div key={d} style={{ textAlign: 'center', fontSize: '0.7rem', color: '#9B9B9B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 0' }}>{d}</div>
         ))}
         {cells.map((cell, i) => {
           if (!cell) return <div key={`empty-${i}`} style={{ background: '#FAFAF8', borderRadius: 6, minHeight: 52 }} />
-          const isToday = cell.date.toDateString() === now.toDateString()
-          const hasActs = cell.activities.length > 0
-          return (
-            <div key={i} style={{
-              background: hasActs ? 'rgba(184,146,106,0.06)' : 'white',
-              border: `1px solid ${isToday ? '#B8926A' : '#F0F0EC'}`,
-              borderRadius: 6, padding: '4px 4px', minHeight: 52
-            }}>
-              <div style={{ fontSize: '0.72rem', fontWeight: isToday ? 700 : 400, color: isToday ? '#B8926A' : '#1A1A1A', marginBottom: 2 }}>
-                {cell.day}
-              </div>
-              {cell.activities.slice(0, 2).map((a, ai) => (
-                <div key={ai} style={{
-                  fontSize: '0.6rem', padding: '1px 3px', borderRadius: 2, marginBottom: 1,
-                  background: a.type === 'open_house' || a.type === 'broker_open' ? 'rgba(91,127,165,0.12)' : 'rgba(184,146,106,0.12)',
-                  color: a.type === 'open_house' || a.type === 'broker_open' ? '#5B7FA5' : '#B8926A',
-                  fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
-                }}>
-                  {new Date(a.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                </div>
-              ))}
-              {cell.activities.length > 2 && (
-                <div style={{ fontSize: '0.58rem', color: '#9B9B9B' }}>+{cell.activities.length - 2} more</div>
-              )}
-            </div>
-          )
+          return <div key={i}>{renderDayCell(cell.date, cell.activities, 52)}</div>
         })}
       </div>
     </div>
@@ -349,6 +461,7 @@ export default function ClientDashboard() {
   const [trendPeriod, setTrendPeriod] = useState('month')
   const [lightboxIdx, setLightboxIdx] = useState(null)
   const [activeTab, setActiveTab] = useState('overview')
+  const [selectedAct, setSelectedAct] = useState(null)
 
   // Get properties from user object
   const properties = user?.properties || []
@@ -990,9 +1103,9 @@ export default function ClientDashboard() {
             {activeTab === 'activity' && (
               <>
                 {/* Calendar View */}
-                <CalendarView activities={data.recent_activity || []} />
+                <CalendarView activities={data.recent_activity || []} onActivityClick={setSelectedAct} />
 
-                {/* Grouped Activity Cards */}
+                {/* Grouped Activity Cards — Side by Side */}
                 {(() => {
                   const all = data.recent_activity || []
                   const showings = all.filter(a => a.type === 'showing')
@@ -1000,34 +1113,41 @@ export default function ClientDashboard() {
                   const openHouses = all.filter(a => a.type === 'open_house')
                   const brokerOpens = all.filter(a => a.type === 'broker_open')
 
-                  const renderGroup = (title, acts, color) => {
-                    if (!acts.length) return null
+                  // Combine showings + previews if previews exist, keep separate if both have items
+                  const groups = [
+                    { title: 'Showings', acts: showings, color: '#B8926A' },
+                    { title: 'Agent Previews', acts: previews, color: '#8B6F47' },
+                    { title: 'Open Houses', acts: openHouses, color: '#5B7FA5' },
+                    { title: 'Broker Opens', acts: brokerOpens, color: '#4A7C59' },
+                  ].filter(g => g.acts.length > 0)
+
+                  if (groups.length === 0) {
                     return (
-                      <div style={{ marginBottom: '2rem' }}>
-                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
-                          <h3 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.15rem', fontWeight: 500, color: '#1A1A1A' }}>{title}</h3>
-                          <span style={{ fontSize: '0.72rem', background: `${color}15`, color, padding: '2px 8px', borderRadius: 100, fontWeight: 600 }}>{acts.length}</span>
-                        </div>
-                        <div style={{ maxHeight: 400, overflowY: 'auto', paddingRight: 4 }}>
-                          {acts.map(act => <ActivityDetailCard key={act.id} act={act} color={color} />)}
-                        </div>
+                      <div className="empty-state" style={{ paddingTop: '3rem' }}>
+                        <Calendar size={40} strokeWidth={1} />
+                        <div className="empty-state__text" style={{ marginTop: '1rem' }}>Activity updates will appear here as they're added</div>
                       </div>
                     )
                   }
 
                   return (
-                    <>
-                      {renderGroup('Showings', showings, '#B8926A')}
-                      {renderGroup('Open Houses', openHouses, '#5B7FA5')}
-                      {renderGroup('Agent Previews', previews, '#8B6F47')}
-                      {renderGroup('Broker Opens', brokerOpens, '#4A7C59')}
-                      {all.length === 0 && (
-                        <div className="empty-state" style={{ paddingTop: '3rem' }}>
-                          <Calendar size={40} strokeWidth={1} />
-                          <div className="empty-state__text" style={{ marginTop: '1rem' }}>Activity updates will appear here as they're added</div>
+                    <div style={{
+                      display: 'grid',
+                      gridTemplateColumns: groups.length === 1 ? '1fr' : groups.length === 2 ? '1fr 1fr' : groups.length === 3 ? '1fr 1fr 1fr' : '1fr 1fr 1fr 1fr',
+                      gap: '1.25rem', alignItems: 'start'
+                    }}>
+                      {groups.map(({ title, acts, color }) => (
+                        <div key={title}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                            <h3 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.1rem', fontWeight: 500, color: '#1A1A1A' }}>{title}</h3>
+                            <span style={{ fontSize: '0.72rem', background: `${color}18`, color, padding: '2px 8px', borderRadius: 100, fontWeight: 600 }}>{acts.length}</span>
+                          </div>
+                          <div style={{ maxHeight: 480, overflowY: 'auto', paddingRight: 4 }}>
+                            {acts.map(act => <ActivityDetailCard key={act.id} act={act} color={color} onClick={setSelectedAct} />)}
+                          </div>
                         </div>
-                      )}
-                    </>
+                      ))}
+                    </div>
                   )
                 })()}
               </>
@@ -1380,6 +1500,8 @@ export default function ClientDashboard() {
           </>
         )}
       </div>
+      {/* Activity Detail Modal */}
+      <ActivityModal act={selectedAct} onClose={() => setSelectedAct(null)} />
     </div>
   )
 }
