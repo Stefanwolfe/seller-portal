@@ -43,6 +43,7 @@ class Settings(BaseSettings):
     resend_api_key: str = os.getenv("RESEND_API_KEY", "")
     portal_url: str = os.getenv("PORTAL_URL", "http://localhost:8000")
     from_email: str = os.getenv("FROM_EMAIL", "DC Concierge <onboarding@resend.dev>")
+    tc_engine_url: str = os.getenv("TC_ENGINE_URL", "")  # e.g. https://transaction-engine-production.up.railway.app
 
 settings = Settings()
 
@@ -2309,6 +2310,23 @@ async def list_clients(admin: User = Depends(require_admin), db: Session = Depen
 
 # ─── Dashboard Stats (Client) ────────────────────────────────────────────────
 
+def fetch_tc_engine_data(mls_number):
+    """Fetch transaction data from TC Engine by MLS number."""
+    if not settings.tc_engine_url or not mls_number:
+        return None
+    try:
+        import urllib.request, json
+        url = f"{settings.tc_engine_url.rstrip('/')}/api/portal/property/{mls_number}"
+        req = urllib.request.Request(url, headers={"Accept": "application/json"})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode())
+            if data.get("found"):
+                return data
+    except Exception as e:
+        print(f"TC Engine fetch error: {e}")
+    return None
+
+
 @app.get("/api/dashboard/{property_id}")
 async def get_dashboard(property_id: int, current_user: User = Depends(get_current_user), db: Session = Depends(get_db)):
     # Access check for clients
@@ -2506,7 +2524,8 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
         } for v in sorted(prop.vendor_appointments, key=lambda x: (x.scheduled_date or datetime.max, x.sort_order))],
         "gallery_links": [{
             "id": l.id, "title": l.title, "url": l.url
-        } for l in sorted(prop.gallery_links, key=lambda x: x.sort_order)]
+        } for l in sorted(prop.gallery_links, key=lambda x: x.sort_order)],
+        "tc_engine": fetch_tc_engine_data(prop.mls_number) if (prop.phase == "pending" and prop.mls_number) else None,
     }
 
 

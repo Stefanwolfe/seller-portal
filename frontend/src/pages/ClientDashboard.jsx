@@ -1495,6 +1495,202 @@ export default function ClientDashboard() {
                     ))}
                   </div>
                 )}
+
+                {/* ─── TC Engine Integration ──────────────────────────────────── */}
+                {data.tc_engine && (
+                  <>
+                    {/* Compliance Warnings */}
+                    {data.tc_engine.compliance_flags?.length > 0 && (
+                      <div style={{ marginTop: '1.5rem' }}>
+                        {data.tc_engine.compliance_flags.map((flag, i) => (
+                          <div key={i} style={{
+                            padding: '14px 18px', borderRadius: 10, marginBottom: '0.5rem',
+                            display: 'flex', alignItems: 'flex-start', gap: '0.75rem',
+                            background: flag.severity === 'critical' ? 'rgba(199, 91, 91, 0.06)' : flag.severity === 'warning' ? 'rgba(212, 164, 74, 0.06)' : 'rgba(91, 127, 165, 0.06)',
+                            border: `1px solid ${flag.severity === 'critical' ? 'rgba(199, 91, 91, 0.15)' : flag.severity === 'warning' ? 'rgba(212, 164, 74, 0.15)' : 'rgba(91, 127, 165, 0.15)'}`,
+                          }}>
+                            <div style={{
+                              width: 8, height: 8, borderRadius: '50%', flexShrink: 0, marginTop: 6,
+                              background: flag.severity === 'critical' ? '#C75B5B' : flag.severity === 'warning' ? '#D4A44A' : '#5B7FA5'
+                            }} />
+                            <div>
+                              <div style={{ fontWeight: 500, fontSize: '0.9rem', color: '#1A1A1A' }}>{flag.title}</div>
+                              {flag.description && <div style={{ fontSize: '0.82rem', color: '#6B6B6B', marginTop: 2 }}>{flag.description}</div>}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {/* Contingencies */}
+                    {data.tc_engine.contingencies?.length > 0 && (
+                      <div style={{ marginTop: '2rem' }}>
+                        <div className="section-header">
+                          <h2 className="section-title">Contingencies</h2>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                          {data.tc_engine.contingencies.map((c, i) => {
+                            const deadline = c.deadline ? new Date(c.deadline + 'T00:00') : null
+                            const days = deadline ? Math.ceil((deadline - new Date()) / 86400000) : null
+                            const isPast = days !== null && days < 0
+                            return (
+                              <div key={i} style={{
+                                padding: '16px 18px', background: 'white', borderRadius: 10,
+                                border: `1px solid ${isPast ? 'rgba(199, 91, 91, 0.2)' : '#F0F0EC'}`,
+                                borderLeft: `4px solid ${isPast ? '#C75B5B' : days !== null && days <= 3 ? '#D4A44A' : '#7F77DD'}`
+                              }}>
+                                <div style={{ fontSize: '0.78rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500, marginBottom: 4 }}>
+                                  {c.type?.replace(/_/g, ' ')}
+                                </div>
+                                {deadline && (
+                                  <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1A1A1A' }}>
+                                    {deadline.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                  </div>
+                                )}
+                                {days !== null && (
+                                  <div style={{ fontSize: '0.78rem', color: isPast ? '#C75B5B' : '#9B9B9B', marginTop: 2, fontFamily: 'JetBrains Mono, monospace' }}>
+                                    {isPast ? `${Math.abs(days)}d overdue` : days === 0 ? 'Due today' : `${days}d away`}
+                                  </div>
+                                )}
+                                {c.days && <div style={{ fontSize: '0.72rem', color: '#9B9B9B', marginTop: 2 }}>{c.days} days</div>}
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* TC Engine Task Progress */}
+                    {data.tc_engine.tasks?.length > 0 && (
+                      <div style={{ marginTop: '2rem' }}>
+                        <div className="section-header">
+                          <h2 className="section-title">Transaction Checklist</h2>
+                          <div style={{ fontSize: '0.82rem', color: '#9B9B9B' }}>
+                            {data.tc_engine.task_summary?.completed || 0} of {data.tc_engine.task_summary?.total || 0} complete
+                          </div>
+                        </div>
+
+                        {/* Overall progress bar */}
+                        {(() => {
+                          const summary = data.tc_engine.task_summary || {}
+                          const pct = summary.total > 0 ? Math.round((summary.completed / summary.total) * 100) : 0
+                          return (
+                            <div style={{ marginBottom: '1.5rem' }}>
+                              <div style={{ height: 6, background: '#F0F0EC', borderRadius: 3, overflow: 'hidden' }}>
+                                <div style={{ height: '100%', width: `${pct}%`, background: '#4A7C59', borderRadius: 3, transition: 'width 0.5s ease' }} />
+                              </div>
+                              <div style={{ display: 'flex', gap: '1rem', marginTop: 8, fontSize: '0.72rem', color: '#9B9B9B' }}>
+                                {summary.overdue > 0 && <span style={{ color: '#C75B5B', fontWeight: 600 }}>{summary.overdue} overdue</span>}
+                                {summary.in_progress > 0 && <span>{summary.in_progress} in progress</span>}
+                                {summary.pending > 0 && <span>{summary.pending} pending</span>}
+                              </div>
+                            </div>
+                          )
+                        })()}
+
+                        {/* Tasks by category */}
+                        {(() => {
+                          const categories = {}
+                          ;(data.tc_engine.tasks || []).forEach(t => {
+                            const cat = t.category || 'Other'
+                            if (!categories[cat]) categories[cat] = []
+                            categories[cat].push(t)
+                          })
+                          const catColors = {
+                            'Admin': '#5B7FA5',
+                            'Financing': '#7F77DD',
+                            'Inspection': '#D4A44A',
+                            'Pre-Closing': '#B8926A',
+                            'Post-Closing': '#4A7C59',
+                          }
+                          return Object.entries(categories).map(([cat, tasks]) => {
+                            const done = tasks.filter(t => t.status === 'completed').length
+                            return (
+                              <div key={cat} style={{ marginBottom: '1rem' }}>
+                                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                                    <div style={{ width: 10, height: 10, borderRadius: 2, background: catColors[cat] || '#9B9B9B' }} />
+                                    <span style={{ fontSize: '0.85rem', fontWeight: 500, color: '#1A1A1A' }}>{cat}</span>
+                                  </div>
+                                  <span style={{ fontSize: '0.72rem', color: '#9B9B9B' }}>{done}/{tasks.length}</span>
+                                </div>
+                                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                                  {tasks.map((t, i) => {
+                                    const isComplete = t.status === 'completed'
+                                    const isOverdue = t.status === 'overdue'
+                                    return (
+                                      <div key={i} style={{
+                                        display: 'flex', alignItems: 'center', gap: '0.75rem',
+                                        padding: '10px 14px', background: 'white', borderRadius: 8,
+                                        border: `1px solid ${isOverdue ? 'rgba(199,91,91,0.15)' : '#F0F0EC'}`,
+                                        opacity: isComplete ? 0.6 : 1
+                                      }}>
+                                        <div style={{
+                                          width: 18, height: 18, borderRadius: 4, flexShrink: 0,
+                                          border: isComplete ? 'none' : isOverdue ? '2px solid #C75B5B' : '2px solid #E0DCD4',
+                                          background: isComplete ? '#4A7C59' : 'transparent',
+                                          display: 'flex', alignItems: 'center', justifyContent: 'center'
+                                        }}>
+                                          {isComplete && <CheckCircle size={12} color="#fff" />}
+                                        </div>
+                                        <div style={{ flex: 1, minWidth: 0 }}>
+                                          <span style={{
+                                            fontSize: '0.85rem', color: isOverdue ? '#C75B5B' : '#1A1A1A',
+                                            textDecoration: isComplete ? 'line-through' : 'none'
+                                          }}>{t.name}</span>
+                                        </div>
+                                        {t.due_date && (
+                                          <span style={{
+                                            fontSize: '0.72rem', fontFamily: 'JetBrains Mono, monospace', flexShrink: 0,
+                                            color: isOverdue ? '#C75B5B' : '#9B9B9B'
+                                          }}>
+                                            {new Date(t.due_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                          </span>
+                                        )}
+                                      </div>
+                                    )
+                                  })}
+                                </div>
+                              </div>
+                            )
+                          })
+                        })()}
+                      </div>
+                    )}
+
+                    {/* TC Engine Key Dates (if not already showing from property fields) */}
+                    {data.tc_engine.critical_dates?.length > 0 && !data.property.mutual_date && (
+                      <div style={{ marginTop: '2rem' }}>
+                        <div className="section-header">
+                          <h2 className="section-title">Key Dates</h2>
+                        </div>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                          {data.tc_engine.critical_dates.filter(d => d.date_value).map((d, i) => {
+                            const dateVal = new Date(d.date_value + 'T00:00')
+                            const days = Math.ceil((dateVal - new Date()) / 86400000)
+                            const isPast = days < 0
+                            return (
+                              <div key={i} style={{
+                                padding: '16px 18px', background: 'white', borderRadius: 10,
+                                border: '1px solid #F0F0EC'
+                              }}>
+                                <div style={{ fontSize: '0.78rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500, marginBottom: 4 }}>
+                                  {d.date_type?.replace(/_/g, ' ')}
+                                </div>
+                                <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1A1A1A' }}>
+                                  {dateVal.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                </div>
+                                <div style={{ fontSize: '0.78rem', color: isPast ? '#C75B5B' : '#9B9B9B', marginTop: 2, fontFamily: 'JetBrains Mono, monospace' }}>
+                                  {isPast ? `${Math.abs(days)}d ago` : `${days}d away`}
+                                </div>
+                              </div>
+                            )
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </>
             )}
           </>
