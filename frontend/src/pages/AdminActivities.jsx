@@ -92,6 +92,7 @@ export default function AdminActivities() {
               <div><span style={{ fontWeight: 600, color: 'var(--admin-success)' }}>{stResult.created}</span> created</div>
               {stResult.skipped_cancelled > 0 && <div><span style={{ fontWeight: 600, color: 'var(--admin-text-muted)' }}>{stResult.skipped_cancelled}</span> cancelled (skipped)</div>}
               {stResult.skipped_duplicate > 0 && <div><span style={{ fontWeight: 600, color: 'var(--admin-text-muted)' }}>{stResult.skipped_duplicate}</span> duplicates (skipped)</div>}
+              {stResult.updated > 0 && <div><span style={{ fontWeight: 600, color: '#5B7FA5' }}>{stResult.updated}</span> updated (added missing data)</div>}
               {stResult.skipped_no_match > 0 && <div><span style={{ fontWeight: 600, color: 'var(--admin-warning)' }}>{stResult.skipped_no_match}</span> no property match</div>}
             </div>
             {stResult.details?.length > 0 && (

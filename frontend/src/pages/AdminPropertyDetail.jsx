@@ -663,6 +663,7 @@ export default function AdminPropertyDetail() {
                   <div><span style={{ fontWeight: 600, color: 'var(--admin-success)' }}>{showingTimeResult.created}</span> created</div>
                   {showingTimeResult.skipped_cancelled > 0 && <div><span style={{ fontWeight: 600, color: 'var(--admin-text-muted)' }}>{showingTimeResult.skipped_cancelled}</span> cancelled (skipped)</div>}
                   {showingTimeResult.skipped_duplicate > 0 && <div><span style={{ fontWeight: 600, color: 'var(--admin-text-muted)' }}>{showingTimeResult.skipped_duplicate}</span> duplicates (skipped)</div>}
+                  {showingTimeResult.updated > 0 && <div><span style={{ fontWeight: 600, color: '#5B7FA5' }}>{showingTimeResult.updated}</span> updated (added missing data)</div>}
                   {showingTimeResult.skipped_no_match > 0 && <div><span style={{ fontWeight: 600, color: 'var(--admin-warning)' }}>{showingTimeResult.skipped_no_match}</span> no property match</div>}
                 </div>
                 {showingTimeResult.details?.length > 0 && (

@@ -1888,11 +1888,11 @@ async def import_showingtime(
         if prop.mls_number:
             mls_lookup[prop.mls_number.strip()] = prop
 
-    results = {"created": 0, "skipped_cancelled": 0, "skipped_no_match": 0, "skipped_duplicate": 0, "details": []}
+    results = {"created": 0, "skipped_cancelled": 0, "skipped_no_match": 0, "skipped_duplicate": 0, "updated": 0, "details": []}
 
     def parse_time_range(date_text):
-        date_text = re.sub(r'\s+', ' ', date_text).strip()
-        m = re.match(r'(\d{1,2}/\d{1,2}/\d{4})\s+(\d{1,2}:\d{2}\s*[APap][Mm])\s*-\s*(\d{1,2}:\d{2}\s*[APap][Mm])', date_text)
+        date_text = re.sub(r"\s+", " ", date_text).strip()
+        m = re.match(r"(\d{1,2}/\d{1,2}/\d{4})\s+(\d{1,2}:\d{2}\s*[APap][Mm])\s*-\s*(\d{1,2}:\d{2}\s*[APap][Mm])", date_text)
         if m:
             date_str, start_str, end_str = m.group(1), m.group(2).strip(), m.group(3).strip()
             base_date = None
@@ -1918,14 +1918,8 @@ async def import_showingtime(
                 continue
         return None, None
 
-    def check_duplicate(prop_id, activity_date):
-        return db.query(Activity).filter(
-            Activity.property_id == prop_id,
-            Activity.activity_date == activity_date
-        ).first() is not None
-
     if "Listing Activity Report" in first_page_text:
-        listing_id_match = re.search(r'Listing ID:\s*(\d+)', first_page_text)
+        listing_id_match = re.search(r"Listing ID:\s*(\d+)", first_page_text)
         if not listing_id_match:
             pdf.close()
             raise HTTPException(status_code=400, detail="Could not find Listing ID in this report")
@@ -1939,77 +1933,156 @@ async def import_showingtime(
             results["details"].append(f"No property matches MLS #{listing_id}")
             return {**results, "message": f"No property found for MLS #{listing_id}"}
 
+        # ─── Pass 1: Extract feedback comments from Feedback Responses ───
+        feedback_lookup = {}
+        full_text = ""
+        for page in pdf.pages:
+            full_text += (page.extract_text() or "") + "\n"
+
+        # Find date lines in feedback section and associated comments
+        # Pattern: date range on its own line like "01/27/2026 1:30 PM - 2:00 PM"
+        lines = full_text.split("\n")
+        i = 0
+        current_feedback_date = None
+        while i < len(lines):
+            line = lines[i].strip()
+            # Look for date range lines in feedback section
+            date_match = re.match(r"(\d{1,2}/\d{1,2}/\d{4})\s+(\d{1,2}:\d{2}\s*[AP]M)\s*-\s*(\d{1,2}:\d{2}\s*[AP]M)", line)
+            if date_match:
+                current_feedback_date = date_match.group(0).strip()
+
+            # Look for COMMENTS/RECOMMENDATIONS
+            if "COMMENTS/RECOMMENDATIONS:" in line and current_feedback_date:
+                comment_text = line.split("COMMENTS/RECOMMENDATIONS:", 1)[1].strip()
+                # Grab continuation lines
+                j = i + 1
+                while j < len(lines) and lines[j].strip() and not re.match(r"(Agent Preview|Showing|Past |Canceled|Declined|New Listing|Listing Activity|Page \d)", lines[j].strip()):
+                    comment_text += " " + lines[j].strip()
+                    j += 1
+                comment_text = comment_text.strip()
+                if comment_text:
+                    feedback_lookup[current_feedback_date] = comment_text
+            i += 1
+
+        # ─── Pass 2: Parse Listing Activity Details tables ───────────────
         for page in pdf.pages:
             tables = page.extract_tables({"text_x_tolerance": 3, "text_y_tolerance": 3})
             for table in tables:
                 if len(table) < 2:
                     continue
 
-                # Find the header row dynamically
                 header_row_idx = None
                 col_map = {}
                 for ri, row in enumerate(table):
-                    row_text = ' '.join([str(c).lower() if c else '' for c in row])
-                    if 'activity type' in row_text and ('activity date' in row_text or 'date' in row_text):
-                        # Map columns dynamically
+                    row_text = " ".join([str(c).lower() if c else "" for c in row])
+                    if "activity type" in row_text and "date" in row_text:
                         for ci, cell in enumerate(row):
-                            cell_lower = str(cell).lower().strip() if cell else ''
-                            if 'type' in cell_lower and 'col_type' not in col_map:
-                                col_map['type'] = ci
-                            elif 'date' in cell_lower and 'col_date' not in col_map:
-                                col_map['date'] = ci
-                            elif 'agent' in cell_lower and 'col_agent' not in col_map:
-                                col_map['agent'] = ci
-                            elif 'note' in cell_lower:
-                                col_map['notes'] = ci
-                            elif 'feedback' in cell_lower:
-                                col_map['feedback'] = ci
+                            cl = str(cell).lower().strip() if cell else ""
+                            if "type" in cl and "type" not in col_map:
+                                col_map["type"] = ci
+                            elif "date" in cl and "date" not in col_map:
+                                col_map["date"] = ci
+                            elif "agent" in cl and "agent" not in col_map:
+                                col_map["agent"] = ci
+                            elif "note" in cl:
+                                col_map["notes"] = ci
+                            elif "feedback" in cl:
+                                col_map["feedback"] = ci
                         header_row_idx = ri
                         break
 
                 if header_row_idx is None:
                     continue
 
-                # Process data rows after header
                 for row in table[header_row_idx + 1:]:
                     try:
-                        cells = [str(c).strip() if c else '' for c in row]
+                        cells = [str(c).strip() if c else "" for c in row]
+                        act_type_raw = cells[col_map.get("type", 0)] if col_map.get("type", 0) < len(cells) else ""
+                        date_cell = cells[col_map.get("date", 1)] if col_map.get("date", 1) < len(cells) else ""
+                        agent_cell = cells[col_map.get("agent", 2)] if col_map.get("agent", 2) < len(cells) else ""
+                        notes = cells[col_map.get("notes", 3)] if col_map.get("notes", 3) < len(cells) else ""
+                        feedback_cell = cells[col_map.get("feedback", 4)] if col_map.get("feedback", 4) < len(cells) else ""
 
-                        act_type_raw = cells[col_map.get('type', 0)] if col_map.get('type', 0) < len(cells) else ''
-                        date_cell = cells[col_map.get('date', 1)] if col_map.get('date', 1) < len(cells) else ''
-                        agent_cell = cells[col_map.get('agent', 2)] if col_map.get('agent', 2) < len(cells) else ''
-                        notes = cells[col_map.get('notes', 3)] if col_map.get('notes', 3) < len(cells) else ''
-                        feedback_cell = cells[col_map.get('feedback', 4)] if col_map.get('feedback', 4) < len(cells) else ''
-
-                        if not date_cell or date_cell == 'None':
+                        if not date_cell or date_cell == "None":
                             continue
 
                         type_lower = act_type_raw.lower()
-                        if 'new listing' in type_lower or 'price change' in type_lower:
+                        if "new listing" in type_lower or "price change" in type_lower:
                             continue
-                        if 'cancel' in type_lower or 'declined' in type_lower:
+                        if "cancel" in type_lower or "declined" in type_lower:
                             results["skipped_cancelled"] += 1
                             continue
 
-                        act_type = "agent_preview" if 'preview' in type_lower else "showing"
+                        act_type = "agent_preview" if "preview" in type_lower else "showing"
 
                         start_dt, end_dt = parse_time_range(date_cell)
                         if not start_dt:
                             continue
 
+                        # Extract brokerage (line 2 of agent cell)
                         brokerage = None
                         if agent_cell:
-                            agent_lines = [l.strip() for l in agent_cell.split('\n') if l.strip()]
+                            agent_lines = [l.strip() for l in agent_cell.split("\n") if l.strip()]
                             if len(agent_lines) >= 2:
-                                brokerage = agent_lines[1]
+                                # Skip phone numbers and emails as brokerage
+                                brokerage_candidate = agent_lines[1]
+                                if not re.match(r"^\(\d{3}\)", brokerage_candidate) and "@" not in brokerage_candidate:
+                                    brokerage = brokerage_candidate
 
+                        # Clean notes
                         if notes:
-                            notes = re.sub(r'\s+', ' ', notes).strip()
-                        if not notes or notes == 'None':
+                            notes = re.sub(r"\s+", " ", notes).strip()
+                        if not notes or notes == "None":
                             notes = None
 
-                        if check_duplicate(matched_prop.id, start_dt):
-                            results["skipped_duplicate"] += 1
+                        # Look up feedback comments by matching date
+                        feedback_comment = None
+                        date_key = re.sub(r"\s+", " ", date_cell).strip()
+                        # Try matching the date portion
+                        for fkey, fval in feedback_lookup.items():
+                            if fkey in date_key or date_key in fkey:
+                                feedback_comment = fval
+                                break
+                            # Also try matching just the start date+time
+                            fkey_start = re.match(r"(\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2}\s*[AP]M)", fkey)
+                            dkey_start = re.match(r"(\d{1,2}/\d{1,2}/\d{4}\s+\d{1,2}:\d{2})", date_key)
+                            if fkey_start and dkey_start and fkey_start.group(1)[:16] == dkey_start.group(1)[:16]:
+                                feedback_comment = fval
+                                break
+
+                        # Combine notes and feedback comment
+                        combined_feedback = ""
+                        if notes:
+                            combined_feedback = notes
+                        if feedback_comment:
+                            if combined_feedback:
+                                combined_feedback += " | Feedback: " + feedback_comment
+                            else:
+                                combined_feedback = feedback_comment
+
+                        # Check for existing activity (duplicate check)
+                        existing = db.query(Activity).filter(
+                            Activity.property_id == matched_prop.id,
+                            Activity.activity_date == start_dt
+                        ).first()
+
+                        if existing:
+                            # Update existing if we have new data it's missing
+                            updated = False
+                            if combined_feedback and not existing.feedback_raw:
+                                existing.feedback_raw = combined_feedback
+                                updated = True
+                            if brokerage and not existing.brokerage:
+                                existing.brokerage = brokerage
+                                updated = True
+                            if end_dt and not existing.activity_end_date:
+                                existing.activity_end_date = end_dt
+                                updated = True
+                            if updated:
+                                results["updated"] += 1
+                                results["details"].append(f"Updated: {matched_prop.address} — {start_dt.strftime('%m/%d %I:%M %p')} (added missing data)")
+                            else:
+                                results["skipped_duplicate"] += 1
                             continue
 
                         act = Activity(
@@ -2019,7 +2092,7 @@ async def import_showingtime(
                             activity_end_date=end_dt,
                             brokerage=brokerage,
                             visitor_count=1,
-                            feedback_raw=notes,
+                            feedback_raw=combined_feedback or None,
                             source="showingtime",
                             created_by=admin.username,
                             is_approved=False,
@@ -2042,7 +2115,7 @@ async def import_showingtime(
             for table in tables:
                 for row in table:
                     if row and len(row) >= 6:
-                        all_rows.append([re.sub(r'\s+', ' ', str(cell)).strip() if cell else "" for cell in row])
+                        all_rows.append([re.sub(r"\s+", " ", str(cell)).strip() if cell else "" for cell in row])
 
         if not all_rows:
             pdf.close()
@@ -2081,14 +2154,14 @@ async def import_showingtime(
                     results["skipped_cancelled"] += 1
                     continue
 
-                listing_id_clean = re.sub(r'[^\d]', '', listing_id)
+                listing_id_clean = re.sub(r"[^\d]", "", listing_id)
                 matched_prop = mls_lookup.get(listing_id_clean)
 
                 if not matched_prop:
                     for prop in properties:
                         if prop.address and address:
-                            addr_num = re.match(r'(\d+)', address)
-                            prop_num = re.match(r'(\d+)', prop.address)
+                            addr_num = re.match(r"(\d+)", address)
+                            prop_num = re.match(r"(\d+)", prop.address)
                             if addr_num and prop_num and addr_num.group(1) == prop_num.group(1):
                                 addr_words = set(address.lower().split())
                                 prop_words = set(prop.address.lower().split())
@@ -2113,7 +2186,11 @@ async def import_showingtime(
                 if not start_dt:
                     continue
 
-                if check_duplicate(matched_prop.id, start_dt):
+                existing = db.query(Activity).filter(
+                    Activity.property_id == matched_prop.id,
+                    Activity.activity_date == start_dt
+                ).first()
+                if existing:
                     results["skipped_duplicate"] += 1
                     continue
 
@@ -2139,9 +2216,13 @@ async def import_showingtime(
 
     pdf.close()
     db.commit()
+    msg = f"Imported {results['created']} showings"
+    if results["updated"]:
+        msg += f", updated {results['updated']} existing"
     return {
-        "message": f"Imported {results['created']} showings",
+        "message": msg,
         "created": results["created"],
+        "updated": results.get("updated", 0),
         "skipped_cancelled": results["skipped_cancelled"],
         "skipped_no_match": results["skipped_no_match"],
         "skipped_duplicate": results["skipped_duplicate"],
