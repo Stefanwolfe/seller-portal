@@ -67,6 +67,279 @@ function CustomTooltip({ active, payload, label }) {
   )
 }
 
+// ─── Activity Card Carousel ─────────────────────────────────────────────────
+
+function ActivityCarousel({ title, activities, color = '#B8926A' }) {
+  const [idx, setIdx] = useState(0)
+  if (!activities || activities.length === 0) return null
+  const act = activities[idx]
+  const start = new Date(act.date)
+  const hasEnd = act.end_date
+  return (
+    <div style={{ marginBottom: '1.5rem' }}>
+      <div className="section-header">
+        <h2 className="section-title">{title}</h2>
+        <span style={{ fontSize: '0.78rem', color: '#9B9B9B' }}>{activities.length} total</span>
+      </div>
+      <div style={{
+        background: 'white', borderRadius: 12, border: '1px solid #F0F0EC',
+        overflow: 'hidden', boxShadow: '0 1px 3px rgba(0,0,0,0.04)'
+      }}>
+        {/* Card content */}
+        <div style={{ padding: '20px 24px', borderLeft: `4px solid ${color}` }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+            <div>
+              <div style={{ fontSize: '0.72rem', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', color, marginBottom: 4 }}>
+                {ACTIVITY_LABELS[act.type] || act.type?.replace(/_/g, ' ')}
+              </div>
+              <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1A1A1A' }}>
+                {start.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+              </div>
+              <div style={{ fontSize: '0.85rem', color: '#6B6B6B', marginTop: 2 }}>
+                {start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                {hasEnd && ` – ${new Date(act.end_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
+              </div>
+            </div>
+            {act.visitor_count > 1 && (
+              <div style={{ textAlign: 'right' }}>
+                <div style={{ fontSize: '1.3rem', fontWeight: 700, color: '#1A1A1A', fontFamily: 'Cormorant Garamond, serif' }}>{act.visitor_count}</div>
+                <div style={{ fontSize: '0.72rem', color: '#9B9B9B' }}>visitors</div>
+              </div>
+            )}
+          </div>
+          {act.brokerage && (
+            <div style={{ fontSize: '0.85rem', color: '#6B6B6B', marginBottom: 6 }}>{act.brokerage}</div>
+          )}
+          {act.feedback && (
+            <div style={{
+              fontSize: '0.88rem', color: '#4A4A4A', lineHeight: 1.5,
+              padding: '10px 14px', background: '#FAFAF8', borderRadius: 8,
+              borderLeft: '3px solid #E0DCD4', marginTop: 8
+            }}>
+              {act.feedback}
+            </div>
+          )}
+        </div>
+        {/* Navigation */}
+        {activities.length > 1 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '10px 16px', borderTop: '1px solid #F0F0EC', background: '#FAFAF8'
+          }}>
+            <button
+              onClick={() => setIdx(Math.max(0, idx - 1))}
+              disabled={idx === 0}
+              style={{
+                border: 'none', background: 'none', cursor: idx === 0 ? 'default' : 'pointer',
+                color: idx === 0 ? '#E0DCD4' : '#9B9B9B', padding: 4, display: 'flex', alignItems: 'center', gap: 4,
+                fontSize: '0.8rem'
+              }}
+            >
+              <ChevronLeft size={16} /> Newer
+            </button>
+            <span style={{ fontSize: '0.75rem', color: '#9B9B9B', fontFamily: 'JetBrains Mono, monospace' }}>
+              {idx + 1} / {activities.length}
+            </span>
+            <button
+              onClick={() => setIdx(Math.min(activities.length - 1, idx + 1))}
+              disabled={idx === activities.length - 1}
+              style={{
+                border: 'none', background: 'none', cursor: idx === activities.length - 1 ? 'default' : 'pointer',
+                color: idx === activities.length - 1 ? '#E0DCD4' : '#9B9B9B', padding: 4, display: 'flex', alignItems: 'center', gap: 4,
+                fontSize: '0.8rem'
+              }}
+            >
+              Older <ChevronRight size={16} />
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ─── Activity Detail Card (vertical scroll) ─────────────────────────────────
+
+function ActivityDetailCard({ act, color = '#B8926A' }) {
+  const start = new Date(act.date)
+  const hasEnd = act.end_date
+  return (
+    <div style={{
+      background: 'white', borderRadius: 10, border: '1px solid #F0F0EC',
+      borderLeft: `4px solid ${color}`, padding: '16px 20px', marginBottom: '0.75rem'
+    }}>
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+        <div>
+          <div style={{ fontWeight: 600, fontSize: '0.95rem', color: '#1A1A1A', marginBottom: 2 }}>
+            {start.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })}
+          </div>
+          <div style={{ fontSize: '0.82rem', color: '#6B6B6B' }}>
+            {start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+            {hasEnd && ` – ${new Date(act.end_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`}
+          </div>
+        </div>
+        {act.visitor_count > 1 && (
+          <span style={{ fontSize: '0.78rem', color: '#9B9B9B', background: '#F5F5F2', padding: '2px 8px', borderRadius: 100 }}>
+            {act.visitor_count} visitors
+          </span>
+        )}
+      </div>
+      {act.brokerage && (
+        <div style={{ fontSize: '0.82rem', color: '#9B9B9B', marginTop: 6 }}>{act.brokerage}</div>
+      )}
+      {act.feedback && (
+        <div style={{
+          fontSize: '0.85rem', color: '#4A4A4A', lineHeight: 1.5, marginTop: 8,
+          padding: '10px 14px', background: '#FAFAF8', borderRadius: 8, borderLeft: '3px solid #E0DCD4'
+        }}>
+          {act.feedback}
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ─── Calendar View ──────────────────────────────────────────────────────────
+
+function CalendarView({ activities }) {
+  const [calView, setCalView] = useState('week')
+  const now = new Date()
+  const [weekOffset, setWeekOffset] = useState(0)
+  const [monthDate, setMonthDate] = useState(new Date(now.getFullYear(), now.getMonth(), 1))
+
+  if (calView === 'week') {
+    // Get the start of the current week + offset
+    const today = new Date()
+    const dayOfWeek = today.getDay()
+    const weekStart = new Date(today)
+    weekStart.setDate(today.getDate() - dayOfWeek + (weekOffset * 7))
+    weekStart.setHours(0, 0, 0, 0)
+
+    const days = []
+    for (let i = 0; i < 7; i++) {
+      const day = new Date(weekStart)
+      day.setDate(weekStart.getDate() + i)
+      const dayStr = day.toDateString()
+      const dayActs = (activities || []).filter(a => new Date(a.date).toDateString() === dayStr)
+      days.push({ date: day, activities: dayActs })
+    }
+
+    const weekLabel = `${weekStart.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })} – ${days[6].date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+
+    return (
+      <div style={{ marginBottom: '1.5rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <button onClick={() => setWeekOffset(w => w - 1)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9B9B9B', padding: 4 }}><ChevronLeft size={18} /></button>
+            <span style={{ fontSize: '0.9rem', fontWeight: 500, color: '#1A1A1A', minWidth: 180, textAlign: 'center' }}>{weekLabel}</span>
+            <button onClick={() => setWeekOffset(w => w + 1)} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9B9B9B', padding: 4 }}><ChevronRight size={18} /></button>
+          </div>
+          <div style={{ display: 'flex', background: '#F5F5F2', borderRadius: 6, padding: 2 }}>
+            <button onClick={() => setCalView('week')} style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: calView === 'week' ? 'white' : 'none', color: '#1A1A1A', fontWeight: calView === 'week' ? 600 : 400, boxShadow: calView === 'week' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none' }}>Week</button>
+            <button onClick={() => setCalView('month')} style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: calView === 'month' ? 'white' : 'none', color: '#1A1A1A', fontWeight: calView === 'month' ? 600 : 400, boxShadow: calView === 'month' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none' }}>Month</button>
+          </div>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '4px' }}>
+          {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+            <div key={d} style={{ textAlign: 'center', fontSize: '0.7rem', color: '#9B9B9B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 0' }}>{d}</div>
+          ))}
+          {days.map((d, i) => {
+            const isToday = d.date.toDateString() === now.toDateString()
+            const hasActs = d.activities.length > 0
+            return (
+              <div key={i} style={{
+                background: hasActs ? 'rgba(184,146,106,0.06)' : 'white',
+                border: `1px solid ${isToday ? '#B8926A' : '#F0F0EC'}`,
+                borderRadius: 8, padding: '8px 6px', minHeight: 72, position: 'relative'
+              }}>
+                <div style={{ fontSize: '0.8rem', fontWeight: isToday ? 700 : 400, color: isToday ? '#B8926A' : '#1A1A1A', marginBottom: 4 }}>
+                  {d.date.getDate()}
+                </div>
+                {d.activities.map((a, ai) => (
+                  <div key={ai} style={{
+                    fontSize: '0.65rem', padding: '2px 4px', borderRadius: 3, marginBottom: 2,
+                    background: a.type === 'open_house' || a.type === 'broker_open' ? 'rgba(91,127,165,0.12)' : 'rgba(184,146,106,0.12)',
+                    color: a.type === 'open_house' || a.type === 'broker_open' ? '#5B7FA5' : '#B8926A',
+                    fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                  }}>
+                    {new Date(a.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                  </div>
+                ))}
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    )
+  }
+
+  // Month view
+  const year = monthDate.getFullYear()
+  const month = monthDate.getMonth()
+  const firstDay = new Date(year, month, 1).getDay()
+  const daysInMonth = new Date(year, month + 1, 0).getDate()
+  const monthLabel = monthDate.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })
+
+  const cells = []
+  for (let i = 0; i < firstDay; i++) cells.push(null)
+  for (let d = 1; d <= daysInMonth; d++) {
+    const day = new Date(year, month, d)
+    const dayStr = day.toDateString()
+    const dayActs = (activities || []).filter(a => new Date(a.date).toDateString() === dayStr)
+    cells.push({ date: day, day: d, activities: dayActs })
+  }
+
+  return (
+    <div style={{ marginBottom: '1.5rem' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <button onClick={() => setMonthDate(new Date(year, month - 1, 1))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9B9B9B', padding: 4 }}><ChevronLeft size={18} /></button>
+          <span style={{ fontSize: '0.9rem', fontWeight: 500, color: '#1A1A1A', minWidth: 140, textAlign: 'center' }}>{monthLabel}</span>
+          <button onClick={() => setMonthDate(new Date(year, month + 1, 1))} style={{ border: 'none', background: 'none', cursor: 'pointer', color: '#9B9B9B', padding: 4 }}><ChevronRight size={18} /></button>
+        </div>
+        <div style={{ display: 'flex', background: '#F5F5F2', borderRadius: 6, padding: 2 }}>
+          <button onClick={() => setCalView('week')} style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: calView === 'week' ? 'white' : 'none', color: '#1A1A1A', fontWeight: calView === 'week' ? 600 : 400, boxShadow: calView === 'week' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none' }}>Week</button>
+          <button onClick={() => setCalView('month')} style={{ fontSize: '0.78rem', padding: '4px 12px', borderRadius: 4, border: 'none', cursor: 'pointer', background: calView === 'month' ? 'white' : 'none', color: '#1A1A1A', fontWeight: calView === 'month' ? 600 : 400, boxShadow: calView === 'month' ? '0 1px 2px rgba(0,0,0,0.06)' : 'none' }}>Month</button>
+        </div>
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(7, 1fr)', gap: '3px' }}>
+        {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(d => (
+          <div key={d} style={{ textAlign: 'center', fontSize: '0.7rem', color: '#9B9B9B', fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em', padding: '4px 0' }}>{d}</div>
+        ))}
+        {cells.map((cell, i) => {
+          if (!cell) return <div key={`empty-${i}`} style={{ background: '#FAFAF8', borderRadius: 6, minHeight: 52 }} />
+          const isToday = cell.date.toDateString() === now.toDateString()
+          const hasActs = cell.activities.length > 0
+          return (
+            <div key={i} style={{
+              background: hasActs ? 'rgba(184,146,106,0.06)' : 'white',
+              border: `1px solid ${isToday ? '#B8926A' : '#F0F0EC'}`,
+              borderRadius: 6, padding: '4px 4px', minHeight: 52
+            }}>
+              <div style={{ fontSize: '0.72rem', fontWeight: isToday ? 700 : 400, color: isToday ? '#B8926A' : '#1A1A1A', marginBottom: 2 }}>
+                {cell.day}
+              </div>
+              {cell.activities.slice(0, 2).map((a, ai) => (
+                <div key={ai} style={{
+                  fontSize: '0.6rem', padding: '1px 3px', borderRadius: 2, marginBottom: 1,
+                  background: a.type === 'open_house' || a.type === 'broker_open' ? 'rgba(91,127,165,0.12)' : 'rgba(184,146,106,0.12)',
+                  color: a.type === 'open_house' || a.type === 'broker_open' ? '#5B7FA5' : '#B8926A',
+                  fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap'
+                }}>
+                  {new Date(a.date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                </div>
+              ))}
+              {cell.activities.length > 2 && (
+                <div style={{ fontSize: '0.58rem', color: '#9B9B9B' }}>+{cell.activities.length - 2} more</div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+    </div>
+  )
+}
+
 export default function ClientDashboard() {
   const { user, logout, refreshUser } = useAuth()
   const [data, setData] = useState(null)
@@ -690,86 +963,74 @@ export default function ClientDashboard() {
                   </div>
                 </div>
 
-                {/* Recent Activity */}
-                <div className="section-header">
-                  <h2 className="section-title">Recent Activity</h2>
-                </div>
-                <div className="activity-feed">
-                  {data.recent_activity?.length > 0 ? (
-                    data.recent_activity.slice(0, 5).map(act => {
-                      const Icon = ACTIVITY_ICONS[act.type] || Eye
-                      return (
-                        <div key={act.id} className="activity-item">
-                          <div className={`activity-item__icon activity-item__icon--${act.type}`}>
-                            <Icon size={18} />
-                          </div>
-                          <div className="activity-item__content">
-                            <div className="activity-item__header">
-                              <span className="activity-item__type">{ACTIVITY_LABELS[act.type] || act.type}</span>
-                              <span className="activity-item__date">{formatDate(act.date)}</span>
-                            </div>
-                            {act.brokerage && <div className="activity-item__brokerage">{act.brokerage}</div>}
-                            {act.feedback && <div className="activity-item__feedback">{act.feedback}</div>}
-                          </div>
+                {/* Activity Carousels */}
+                {(() => {
+                  const past = (data.recent_activity || []).filter(a => new Date(a.date) <= new Date())
+                  const showings = past.filter(a => a.type === 'showing' || a.type === 'agent_preview')
+                  const openHouses = past.filter(a => a.type === 'open_house')
+                  const brokerOpens = past.filter(a => a.type === 'broker_open')
+                  return (
+                    <>
+                      <ActivityCarousel title="Showings & Previews" activities={showings} color="#B8926A" />
+                      <ActivityCarousel title="Open Houses" activities={openHouses} color="#5B7FA5" />
+                      <ActivityCarousel title="Broker Opens" activities={brokerOpens} color="#4A7C59" />
+                      {past.length === 0 && (
+                        <div className="empty-state">
+                          <Calendar size={32} strokeWidth={1} />
+                          <div className="empty-state__text" style={{ marginTop: '0.75rem' }}>No activity to display yet</div>
                         </div>
-                      )
-                    })
-                  ) : (
-                    <div className="empty-state">
-                      <Calendar size={32} strokeWidth={1} />
-                      <div className="empty-state__text" style={{ marginTop: '0.75rem' }}>No activity to display yet</div>
-                    </div>
-                  )}
-                </div>
+                      )}
+                    </>
+                  )
+                })()}
               </>
             )}
 
             {/* ─── Activity Tab ─────────────────────────────────────────────── */}
             {activeTab === 'activity' && (
-              <div className="activity-feed">
-                <div className="section-header">
-                  <h2 className="section-title">All Activity</h2>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--client-text-muted)' }}>
-                    {data.recent_activity?.length || 0} total entries
-                  </div>
-                </div>
-                {data.recent_activity?.length > 0 ? (
-                  data.recent_activity.map(act => {
-                    const Icon = ACTIVITY_ICONS[act.type] || Eye
-                    const start = new Date(act.date)
-                    const dateStr = formatDate(act.date)
-                    const timeStr = start.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
-                    const endTimeStr = act.end_date ? new Date(act.end_date).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }) : null
-                    const isUpcoming = start > new Date()
+              <>
+                {/* Calendar View */}
+                <CalendarView activities={data.recent_activity || []} />
+
+                {/* Grouped Activity Cards */}
+                {(() => {
+                  const all = data.recent_activity || []
+                  const showings = all.filter(a => a.type === 'showing')
+                  const previews = all.filter(a => a.type === 'agent_preview')
+                  const openHouses = all.filter(a => a.type === 'open_house')
+                  const brokerOpens = all.filter(a => a.type === 'broker_open')
+
+                  const renderGroup = (title, acts, color) => {
+                    if (!acts.length) return null
                     return (
-                      <div key={act.id} className="activity-item" style={isUpcoming ? { borderLeft: '3px solid #5B7FA5', paddingLeft: 14 } : {}}>
-                        <div className={`activity-item__icon activity-item__icon--${act.type}`}>
-                          <Icon size={18} />
+                      <div style={{ marginBottom: '2rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.75rem' }}>
+                          <h3 style={{ fontFamily: 'Cormorant Garamond, serif', fontSize: '1.15rem', fontWeight: 500, color: '#1A1A1A' }}>{title}</h3>
+                          <span style={{ fontSize: '0.72rem', background: `${color}15`, color, padding: '2px 8px', borderRadius: 100, fontWeight: 600 }}>{acts.length}</span>
                         </div>
-                        <div className="activity-item__content">
-                          <div className="activity-item__header">
-                            <span className="activity-item__type">
-                              {ACTIVITY_LABELS[act.type] || act.type}
-                              {isUpcoming && <span style={{ fontSize: '0.68rem', marginLeft: 6, background: 'rgba(91,127,165,0.1)', color: '#5B7FA5', padding: '1px 6px', borderRadius: 100, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.03em' }}>Upcoming</span>}
-                            </span>
-                            <span className="activity-item__date">
-                              {dateStr} · {timeStr}{endTimeStr ? ` – ${endTimeStr}` : ''}
-                            </span>
-                          </div>
-                          {act.brokerage && <div className="activity-item__brokerage">{act.brokerage}</div>}
-                          {act.visitor_count > 1 && <div className="activity-item__brokerage">{act.visitor_count} visitors</div>}
-                          {act.feedback && <div className="activity-item__feedback">{act.feedback}</div>}
+                        <div style={{ maxHeight: 400, overflowY: 'auto', paddingRight: 4 }}>
+                          {acts.map(act => <ActivityDetailCard key={act.id} act={act} color={color} />)}
                         </div>
                       </div>
                     )
-                  })
-                ) : (
-                  <div className="empty-state" style={{ paddingTop: '3rem' }}>
-                    <Calendar size={40} strokeWidth={1} />
-                    <div className="empty-state__text" style={{ marginTop: '1rem' }}>Activity updates will appear here as they're added</div>
-                  </div>
-                )}
-              </div>
+                  }
+
+                  return (
+                    <>
+                      {renderGroup('Showings', showings, '#B8926A')}
+                      {renderGroup('Open Houses', openHouses, '#5B7FA5')}
+                      {renderGroup('Agent Previews', previews, '#8B6F47')}
+                      {renderGroup('Broker Opens', brokerOpens, '#4A7C59')}
+                      {all.length === 0 && (
+                        <div className="empty-state" style={{ paddingTop: '3rem' }}>
+                          <Calendar size={40} strokeWidth={1} />
+                          <div className="empty-state__text" style={{ marginTop: '1rem' }}>Activity updates will appear here as they're added</div>
+                        </div>
+                      )}
+                    </>
+                  )
+                })()}
+              </>
             )}
 
             {/* ─── Marketing Tab ────────────────────────────────────────────── */}
