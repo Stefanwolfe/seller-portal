@@ -1130,6 +1130,8 @@ async def get_property(property_id: int, current_user: User = Depends(get_curren
         "inspection_response_date": prop.inspection_response_date.isoformat() if prop.inspection_response_date else None,
         "earnest_money_date": prop.earnest_money_date.isoformat() if prop.earnest_money_date else None,
         "closing_date": prop.closing_date.isoformat() if prop.closing_date else None,
+        "pushed_dates": prop.pushed_dates or {},
+        "show_tc_engine": prop.show_tc_engine or False,
         "days_on_market": days_on_market,
         "photos": photos,
         "pre_market_tasks": [{
@@ -1148,7 +1150,9 @@ async def get_property(property_id: int, current_user: User = Depends(get_curren
             "due_date": m.due_date.isoformat() if m.due_date else None,
             "status": m.status,
             "notes": m.notes,
-            "sort_order": m.sort_order
+            "sort_order": m.sort_order,
+            "category": m.category,
+            "is_pushed": m.is_pushed or False,
         } for m in sorted(prop.pending_milestones, key=lambda x: x.sort_order)],
         "custom_sections": [{
             "id": s.id,
