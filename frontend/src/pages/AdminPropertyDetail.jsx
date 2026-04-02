@@ -1560,27 +1560,51 @@ export default function AdminPropertyDetail() {
           <>
             {/* ─── Key Transaction Dates ──────────────────────────────────── */}
             <div className="admin-card" style={{ marginBottom: '1rem' }}>
-              <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem', marginBottom: '0.75rem' }}>Key Transaction Dates</h3>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem' }}>Key Transaction Dates</h3>
+                {property.mls_number && (
+                  <button className="btn btn--ghost btn--small" onClick={async () => {
+                    try {
+                      const result = await api.syncTCEngine(id)
+                      alert(result.message)
+                      loadData()
+                    } catch (err) { alert(err.message) }
+                  }}>
+                    ↓ Sync from TC Engine
+                  </button>
+                )}
+              </div>
               <p style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)', marginBottom: '1rem' }}>
-                Structured contract dates — these power the client's closing countdown and timeline.
+                Structured contract dates — toggle the eye to push each date to the client.
               </p>
               <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Mutual Acceptance</label>
-                  <input className="form-input" type="date" value={pendingDatesLocal.mutual_date || ''} onChange={e => setPendingDatesLocal(prev => ({...prev, mutual_date: e.target.value}))} />
-                </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Inspection Deadline</label>
-                  <input className="form-input" type="date" value={pendingDatesLocal.inspection_deadline || ''} onChange={e => setPendingDatesLocal(prev => ({...prev, inspection_deadline: e.target.value}))} />
-                </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Earnest Money Due</label>
-                  <input className="form-input" type="date" value={pendingDatesLocal.earnest_money_date || ''} onChange={e => setPendingDatesLocal(prev => ({...prev, earnest_money_date: e.target.value}))} />
-                </div>
-                <div className="form-group" style={{ margin: 0 }}>
-                  <label className="form-label">Closing Date</label>
-                  <input className="form-input" type="date" value={pendingDatesLocal.closing_date || ''} onChange={e => setPendingDatesLocal(prev => ({...prev, closing_date: e.target.value}))} />
-                </div>
+                {[
+                  { label: 'Mutual Acceptance', field: 'mutual_date' },
+                  { label: 'Inspection Deadline', field: 'inspection_deadline' },
+                  { label: 'Earnest Money Due', field: 'earnest_money_date' },
+                  { label: 'Closing Date', field: 'closing_date' },
+                ].map(d => {
+                  const pushed = (property.pushed_dates || {})[d.field]
+                  return (
+                    <div key={d.field} className="form-group" style={{ margin: 0 }}>
+                      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <label className="form-label">{d.label}</label>
+                        <button
+                          onClick={async () => { await api.toggleDatePush(id, d.field); loadData() }}
+                          title={pushed ? 'Visible to client — click to hide' : 'Hidden from client — click to push'}
+                          style={{
+                            background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px',
+                            fontSize: '0.72rem', fontWeight: 600,
+                            color: pushed ? '#4A7C59' : 'var(--admin-text-muted)',
+                          }}
+                        >
+                          {pushed ? '✓ Pushed' : '○ Push'}
+                        </button>
+                      </div>
+                      <input className="form-input" type="date" value={pendingDatesLocal[d.field] || ''} onChange={e => setPendingDatesLocal(prev => ({...prev, [d.field]: e.target.value}))} />
+                    </div>
+                  )
+                })}
               </div>
 
               {/* Inspection Response Toggle */}
@@ -1663,61 +1687,98 @@ export default function AdminPropertyDetail() {
 
             <div className="admin-card">
               {property.pending_milestones?.length > 0 ? (
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
-                  {property.pending_milestones.map(m => (
-                    <div key={m.id} style={{
-                      display: 'flex', alignItems: 'center', gap: '0.75rem',
-                      padding: '10px 12px', background: 'var(--admin-bg)', borderRadius: 8,
-                      opacity: m.status === 'complete' || m.status === 'waived' ? 0.6 : 1
-                    }}>
-                      <button
-                        onClick={() => handleUpdateMilestoneStatus(m.id, m.status === 'complete' ? 'upcoming' : 'complete')}
-                        style={{
-                          width: 22, height: 22, borderRadius: 6, border: '2px solid',
-                          borderColor: m.status === 'complete' ? 'var(--admin-success)' : 'var(--admin-border)',
-                          background: m.status === 'complete' ? 'var(--admin-success)' : 'transparent',
-                          cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
-                        }}
-                      >
-                        {m.status === 'complete' && <Check size={14} color="#fff" />}
-                      </button>
-                      <div style={{ flex: 1 }}>
-                        <div style={{ fontWeight: 500, fontSize: '0.9rem', textDecoration: m.status === 'complete' ? 'line-through' : 'none' }}>{m.title}</div>
-                        <div style={{ display: 'flex', gap: '0.75rem', marginTop: 2 }}>
-                          {m.due_date && (
-                            <span style={{
-                              fontSize: '0.78rem', fontFamily: 'JetBrains Mono',
-                              color: m.status !== 'complete' && new Date(m.due_date + 'T00:00') < new Date() ? 'var(--admin-danger)' : 'var(--admin-text-muted)'
+                <div>
+                  {(() => {
+                    // Group milestones by category
+                    const grouped = {}
+                    const uncategorized = []
+                    ;(property.pending_milestones || []).forEach(m => {
+                      if (m.category) {
+                        if (!grouped[m.category]) grouped[m.category] = []
+                        grouped[m.category].push(m)
+                      } else {
+                        uncategorized.push(m)
+                      }
+                    })
+                    const allGroups = [...Object.entries(grouped)]
+                    if (uncategorized.length > 0) allGroups.push(['General', uncategorized])
+
+                    return allGroups.map(([cat, milestones]) => (
+                      <div key={cat} style={{ marginBottom: '1rem' }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.35rem', padding: '0 4px' }}>
+                          <span style={{ fontSize: '0.78rem', fontWeight: 600, color: 'var(--admin-gold)', textTransform: 'uppercase', letterSpacing: '0.04em' }}>{cat}</span>
+                          <span style={{ fontSize: '0.7rem', color: 'var(--admin-text-muted)' }}>
+                            {milestones.filter(m => m.status === 'complete').length}/{milestones.length} done · {milestones.filter(m => m.is_pushed).length} pushed
+                          </span>
+                        </div>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.35rem' }}>
+                          {milestones.map(m => (
+                            <div key={m.id} style={{
+                              display: 'flex', alignItems: 'center', gap: '0.5rem',
+                              padding: '8px 10px', background: 'var(--admin-bg)', borderRadius: 6,
+                              opacity: m.status === 'complete' || m.status === 'waived' ? 0.55 : 1,
+                              borderLeft: m.is_pushed ? '3px solid var(--admin-success)' : '3px solid transparent'
                             }}>
-                              {new Date(m.due_date + 'T00:00').toLocaleDateString()}
-                              {m.status !== 'complete' && m.due_date && (() => {
-                                const days = Math.ceil((new Date(m.due_date + 'T00:00') - new Date()) / 86400000)
-                                return days >= 0 ? ` (${days}d)` : ` (${Math.abs(days)}d overdue)`
-                              })()}
-                            </span>
-                          )}
-                          {m.notes && <span style={{ fontSize: '0.78rem', color: 'var(--admin-text-muted)' }}>{m.notes}</span>}
+                              <button
+                                onClick={() => handleUpdateMilestoneStatus(m.id, m.status === 'complete' ? 'upcoming' : 'complete')}
+                                style={{
+                                  width: 18, height: 18, borderRadius: 4, border: '2px solid',
+                                  borderColor: m.status === 'complete' ? 'var(--admin-success)' : 'var(--admin-border)',
+                                  background: m.status === 'complete' ? 'var(--admin-success)' : 'transparent',
+                                  cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                                }}
+                              >
+                                {m.status === 'complete' && <Check size={12} color="#fff" />}
+                              </button>
+                              <div style={{ flex: 1, minWidth: 0 }}>
+                                <div style={{ fontWeight: 500, fontSize: '0.85rem', textDecoration: m.status === 'complete' ? 'line-through' : 'none', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.title}</div>
+                                <div style={{ display: 'flex', gap: '0.5rem', marginTop: 1 }}>
+                                  {m.due_date && (
+                                    <span style={{
+                                      fontSize: '0.72rem', fontFamily: 'JetBrains Mono',
+                                      color: m.status !== 'complete' && new Date(m.due_date + 'T00:00') < new Date() ? 'var(--admin-danger)' : 'var(--admin-text-muted)'
+                                    }}>
+                                      {new Date(m.due_date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                                    </span>
+                                  )}
+                                  {m.notes && <span style={{ fontSize: '0.72rem', color: 'var(--admin-text-muted)', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{m.notes}</span>}
+                                </div>
+                              </div>
+                              <button
+                                onClick={async () => { await api.toggleMilestonePush(m.id); loadData() }}
+                                title={m.is_pushed ? 'Visible to client' : 'Hidden from client'}
+                                style={{
+                                  background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px',
+                                  fontSize: '0.68rem', fontWeight: 600, borderRadius: 4, flexShrink: 0,
+                                  color: m.is_pushed ? '#4A7C59' : 'var(--admin-text-muted)',
+                                  background: m.is_pushed ? 'rgba(74,124,89,0.08)' : 'transparent',
+                                }}
+                              >
+                                {m.is_pushed ? '✓' : '○'}
+                              </button>
+                              <select
+                                value={m.status}
+                                onChange={e => handleUpdateMilestoneStatus(m.id, e.target.value)}
+                                style={{ fontSize: '0.7rem', padding: '2px 4px', borderRadius: 4, border: '1px solid var(--admin-border)', background: 'var(--admin-surface)', color: 'var(--admin-text-secondary)', cursor: 'pointer', flexShrink: 0 }}
+                              >
+                                <option value="upcoming">Upcoming</option>
+                                <option value="in_progress">In Progress</option>
+                                <option value="complete">Complete</option>
+                                <option value="waived">Waived</option>
+                              </select>
+                              <button onClick={() => handleDeleteMilestone(m.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 2, flexShrink: 0 }}>
+                                <Trash2 size={12} />
+                              </button>
+                            </div>
+                          ))}
                         </div>
                       </div>
-                      <select
-                        value={m.status}
-                        onChange={e => handleUpdateMilestoneStatus(m.id, e.target.value)}
-                        style={{ fontSize: '0.75rem', padding: '3px 8px', borderRadius: 4, border: '1px solid var(--admin-border)', background: 'var(--admin-surface)', color: 'var(--admin-text-secondary)', cursor: 'pointer' }}
-                      >
-                        <option value="upcoming">Upcoming</option>
-                        <option value="in_progress">In Progress</option>
-                        <option value="complete">Complete</option>
-                        <option value="waived">Waived</option>
-                      </select>
-                      <button onClick={() => handleDeleteMilestone(m.id)} style={{ background: 'none', border: 'none', color: 'var(--admin-text-muted)', cursor: 'pointer', padding: 4 }}>
-                        <Trash2 size={14} />
-                      </button>
-                    </div>
-                  ))}
+                    ))
+                  })()}
                 </div>
               ) : (
                 <div style={{ textAlign: 'center', padding: '2rem', color: 'var(--admin-text-muted)' }}>
-                  No milestones yet. Add contract dates so your clients can track their transaction progress.
+                  No milestones yet. {property.mls_number ? 'Click "Sync from TC Engine" above, or add milestones manually.' : 'Add contract dates so your clients can track their transaction progress.'}
                 </div>
               )}
             </div>

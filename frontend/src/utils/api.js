@@ -377,6 +377,20 @@ class ApiClient {
     return this.request(`/properties/${propertyId}/tc-engine-data`);
   }
 
+  syncTCEngine(propertyId) {
+    return this.request(`/properties/${propertyId}/sync-tc-engine`, { method: 'POST' });
+  }
+
+  toggleMilestonePush(milestoneId) {
+    return this.request(`/milestones/${milestoneId}/toggle-push`, { method: 'PUT' });
+  }
+
+  toggleDatePush(propertyId, dateField) {
+    const formData = new FormData();
+    formData.append('date_field', dateField);
+    return this.request(`/properties/${propertyId}/toggle-date-push`, { method: 'PUT', body: formData });
+  }
+
   // Clients
   getClients() {
     return this.request('/clients');

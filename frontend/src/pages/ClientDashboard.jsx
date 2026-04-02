@@ -1379,38 +1379,43 @@ export default function ClientDashboard() {
                 </div>
 
                 {/* Key Transaction Dates */}
-                {(data.property.mutual_date || data.property.inspection_deadline || data.property.earnest_money_date || data.property.closing_date) && (
-                  <div style={{ marginTop: '2rem' }}>
-                    <div className="section-header">
-                      <h2 className="section-title">Key Dates</h2>
-                    </div>
-                    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
-                      {[
-                        { label: 'Mutual Acceptance', date: data.property.mutual_date },
-                        { label: 'Inspection Deadline', date: data.property.inspection_deadline },
-                        { label: 'Earnest Money Due', date: data.property.earnest_money_date },
-                        { label: 'Closing Date', date: data.property.closing_date },
-                      ].filter(d => d.date).map((d, i) => {
-                        const days = Math.ceil((new Date(d.date + 'T00:00') - new Date()) / 86400000)
-                        const isPast = days < 0
-                        return (
-                          <div key={i} style={{
-                            padding: '16px 18px', background: 'white', borderRadius: 10,
-                            border: '1px solid #F0F0EC'
-                          }}>
-                            <div style={{ fontSize: '0.78rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500, marginBottom: 4 }}>{d.label}</div>
-                            <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1A1A1A' }}>
-                              {new Date(d.date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                {(() => {
+                  const pd = data.property.pushed_dates || {}
+                  const dates = [
+                    { label: 'Mutual Acceptance', date: data.property.mutual_date, field: 'mutual_date' },
+                    { label: 'Inspection Deadline', date: data.property.inspection_deadline, field: 'inspection_deadline' },
+                    { label: 'Earnest Money Due', date: data.property.earnest_money_date, field: 'earnest_money_date' },
+                    { label: 'Closing Date', date: data.property.closing_date, field: 'closing_date' },
+                  ].filter(d => d.date && pd[d.field])
+                  if (dates.length === 0) return null
+                  return (
+                    <div style={{ marginTop: '2rem' }}>
+                      <div className="section-header">
+                        <h2 className="section-title">Key Dates</h2>
+                      </div>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '0.75rem' }}>
+                        {dates.map((d, i) => {
+                          const days = Math.ceil((new Date(d.date + 'T00:00') - new Date()) / 86400000)
+                          const isPast = days < 0
+                          return (
+                            <div key={i} style={{
+                              padding: '16px 18px', background: 'white', borderRadius: 10,
+                              border: '1px solid #F0F0EC'
+                            }}>
+                              <div style={{ fontSize: '0.78rem', color: '#9B9B9B', textTransform: 'uppercase', letterSpacing: '0.04em', fontWeight: 500, marginBottom: 4 }}>{d.label}</div>
+                              <div style={{ fontSize: '1rem', fontWeight: 600, color: '#1A1A1A' }}>
+                                {new Date(d.date + 'T00:00').toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}
+                              </div>
+                              <div style={{ fontSize: '0.78rem', color: isPast ? '#C75B5B' : '#9B9B9B', marginTop: 2, fontFamily: 'JetBrains Mono, monospace' }}>
+                                {isPast ? `${Math.abs(days)}d ago` : `${days}d away`}
+                              </div>
                             </div>
-                            <div style={{ fontSize: '0.78rem', color: isPast ? '#C75B5B' : '#9B9B9B', marginTop: 2, fontFamily: 'JetBrains Mono, monospace' }}>
-                              {isPast ? `${Math.abs(days)}d ago` : `${days}d away`}
-                            </div>
-                          </div>
-                        )
-                      })}
+                          )
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )
+                })()}
 
                 {/* Inspection Response Status */}
                 {data.property.inspection_response_received && data.property.inspection_response_date && (

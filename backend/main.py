@@ -18,7 +18,7 @@ from fastapi.responses import JSONResponse
 
 import resend
 
-from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Float, ForeignKey, Date, Enum as SAEnum
+from sqlalchemy import create_engine, Column, Integer, String, Text, DateTime, Boolean, Float, ForeignKey, Date, Enum as SAEnum, JSON as SAJSON
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session, relationship, selectinload
 from sqlalchemy.dialects.postgresql import JSON
@@ -114,6 +114,7 @@ class Property(Base):
     earnest_money_date = Column(Date)
     closing_date = Column(Date)
     show_tc_engine = Column(Boolean, default=False)  # Admin toggle: show TC Engine data to clients
+    pushed_dates = Column(SAJSON, default=dict)  # {"mutual_date": true, "closing_date": false, ...}
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     # Relationships
@@ -248,6 +249,8 @@ class PendingMilestone(Base):
     status = Column(String(50), default="upcoming")  # upcoming, in_progress, complete, waived
     notes = Column(Text)
     sort_order = Column(Integer, default=0)
+    category = Column(String(100))  # Admin, Financing, Inspection, Pre-Closing, Post-Closing
+    is_pushed = Column(Boolean, default=False)  # Visible to client
     created_at = Column(DateTime, default=datetime.utcnow)
     completed_at = Column(DateTime)
     property = relationship("Property", back_populates="pending_milestones")
@@ -653,6 +656,7 @@ async def lifespan(app: FastAPI):
                 "closing_date": "DATE",
                 "updated_at": "TIMESTAMP",
                 "show_tc_engine": "BOOLEAN DEFAULT FALSE",
+                "pushed_dates": "JSON DEFAULT '{}'",
             }
             for col, col_type in props_to_add.items():
                 if not has_column("properties", col):
@@ -672,6 +676,13 @@ async def lifespan(app: FastAPI):
             if inspector.has_table("activities"):
                 if not has_column("activities", "activity_end_date"):
                     conn.execute(text("ALTER TABLE activities ADD COLUMN activity_end_date TIMESTAMP"))
+
+            # Pending milestones columns
+            if inspector.has_table("pending_milestones"):
+                if not has_column("pending_milestones", "category"):
+                    conn.execute(text("ALTER TABLE pending_milestones ADD COLUMN category VARCHAR(100)"))
+                if not has_column("pending_milestones", "is_pushed"):
+                    conn.execute(text("ALTER TABLE pending_milestones ADD COLUMN is_pushed BOOLEAN DEFAULT FALSE"))
 
             conn.commit()
         except Exception as e:
@@ -1294,6 +1305,105 @@ async def get_tc_engine_data(property_id: int, admin: User = Depends(require_adm
         raise HTTPException(status_code=404, detail="Property not found")
     data = fetch_tc_engine_data(prop.mls_number)
     return {"tc_engine": data, "show_tc_engine": prop.show_tc_engine or False}
+
+
+@app.post("/api/properties/{property_id}/sync-tc-engine")
+async def sync_tc_engine(property_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    """Pull TC Engine data into local pending milestones and dates."""
+    prop = db.query(Property).filter(Property.id == property_id).first()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    tc = fetch_tc_engine_data(prop.mls_number)
+    if not tc:
+        raise HTTPException(status_code=404, detail="No TC Engine data found for this property")
+
+    synced_tasks = 0
+    synced_dates = 0
+
+    # Sync critical dates into property fields
+    date_mapping = {
+        "mutual_acceptance": "mutual_date",
+        "inspection_deadline": "inspection_deadline",
+        "earnest_money_due": "earnest_money_date",
+        "closing_date": "closing_date",
+    }
+    for cd in tc.get("critical_dates", []):
+        if cd.get("date_value"):
+            prop_field = date_mapping.get(cd["date_type"])
+            if prop_field:
+                current = getattr(prop, prop_field, None)
+                if not current:
+                    from datetime import date as date_type
+                    setattr(prop, prop_field, date_type.fromisoformat(cd["date_value"]))
+                    synced_dates += 1
+            else:
+                # Non-standard date → create as a milestone with type "date"
+                exists = db.query(PendingMilestone).filter(
+                    PendingMilestone.property_id == property_id,
+                    PendingMilestone.milestone_type == cd["date_type"]
+                ).first()
+                if not exists:
+                    m = PendingMilestone(
+                        property_id=property_id,
+                        title=cd["date_type"].replace("_", " ").title(),
+                        milestone_type=cd["date_type"],
+                        due_date=date_type.fromisoformat(cd["date_value"]) if cd.get("date_value") else None,
+                        category="Key Dates",
+                        status="upcoming",
+                        is_pushed=False,
+                        sort_order=synced_dates
+                    )
+                    db.add(m)
+                    synced_dates += 1
+
+    # Sync tasks into milestones grouped by category
+    for task in tc.get("tasks", []):
+        exists = db.query(PendingMilestone).filter(
+            PendingMilestone.property_id == property_id,
+            PendingMilestone.title == task["name"],
+            PendingMilestone.category == task.get("category")
+        ).first()
+        if not exists:
+            status_map = {"completed": "complete", "in_progress": "in_progress", "overdue": "upcoming", "pending": "upcoming"}
+            m = PendingMilestone(
+                property_id=property_id,
+                title=task["name"],
+                milestone_type="task",
+                due_date=date_type.fromisoformat(task["due_date"]) if task.get("due_date") else None,
+                category=task.get("category", "Other"),
+                status=status_map.get(task.get("status"), "upcoming"),
+                is_pushed=False,
+                sort_order=synced_tasks
+            )
+            db.add(m)
+            synced_tasks += 1
+
+    db.commit()
+    return {"message": f"Synced {synced_dates} dates and {synced_tasks} tasks from TC Engine"}
+
+
+@app.put("/api/milestones/{milestone_id}/toggle-push")
+async def toggle_milestone_push(milestone_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    m = db.query(PendingMilestone).filter(PendingMilestone.id == milestone_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Milestone not found")
+    m.is_pushed = not (m.is_pushed or False)
+    db.commit()
+    return {"is_pushed": m.is_pushed}
+
+
+@app.put("/api/properties/{property_id}/toggle-date-push")
+async def toggle_date_push(property_id: int, date_field: str = Form(...), admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    prop = db.query(Property).filter(Property.id == property_id).first()
+    if not prop:
+        raise HTTPException(status_code=404, detail="Property not found")
+    pushed = dict(prop.pushed_dates or {})
+    pushed[date_field] = not pushed.get(date_field, False)
+    prop.pushed_dates = pushed
+    from sqlalchemy.orm.attributes import flag_modified
+    flag_modified(prop, "pushed_dates")
+    db.commit()
+    return {"pushed_dates": prop.pushed_dates}
 
 
 # ─── Custom Section Routes ───────────────────────────────────────────────────
@@ -2479,6 +2589,7 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
             "earnest_money_date": prop.earnest_money_date.isoformat() if prop.earnest_money_date else None,
             "closing_date": prop.closing_date.isoformat() if prop.closing_date else None,
             "show_tc_engine": prop.show_tc_engine or False,
+            "pushed_dates": prop.pushed_dates or {},
         },
         "stats": {
             "total_activities": len(all_activities),
@@ -2528,8 +2639,11 @@ async def get_dashboard(property_id: int, current_user: User = Depends(get_curre
             "milestone_type": m.milestone_type,
             "due_date": m.due_date.isoformat() if m.due_date else None,
             "status": m.status,
-            "notes": m.notes
-        } for m in sorted(prop.pending_milestones, key=lambda x: x.sort_order)],
+            "notes": m.notes,
+            "category": m.category,
+            "is_pushed": m.is_pushed or False,
+        } for m in sorted(prop.pending_milestones, key=lambda x: x.sort_order)
+          if current_user.role == "admin" or (m.is_pushed)],
         "custom_sections": [{
             "id": s.id,
             "phase": s.phase,
