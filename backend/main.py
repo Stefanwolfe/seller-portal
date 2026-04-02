@@ -1875,13 +1875,11 @@ async def import_showingtime(
     import io
     import re
 
-    content = await file.read()
-    pdf = pdfplumber.open(io.BytesIO(content))
+    raw_content = await file.read()
+    pdf = pdfplumber.open(io.BytesIO(raw_content))
 
-    # Detect format from first page text
     first_page_text = pdf.pages[0].extract_text() or ""
 
-    # Load all properties for matching
     properties = db.query(Property).filter(
         (Property.is_archived == False) | (Property.is_archived == None)
     ).all()
@@ -1893,29 +1891,26 @@ async def import_showingtime(
     results = {"created": 0, "skipped_cancelled": 0, "skipped_no_match": 0, "skipped_duplicate": 0, "details": []}
 
     def parse_time_range(date_text):
-        """Parse '03/31/2026 2:15 PM - 2:45 PM' into start and end datetimes."""
         date_text = re.sub(r'\s+', ' ', date_text).strip()
         m = re.match(r'(\d{1,2}/\d{1,2}/\d{4})\s+(\d{1,2}:\d{2}\s*[APap][Mm])\s*-\s*(\d{1,2}:\d{2}\s*[APap][Mm])', date_text)
         if m:
             date_str, start_str, end_str = m.group(1), m.group(2).strip(), m.group(3).strip()
+            base_date = None
             for dfmt in ["%m/%d/%Y", "%m/%d/%y"]:
                 try:
                     base_date = datetime.strptime(date_str, dfmt)
                     break
                 except ValueError:
                     continue
-            else:
+            if not base_date:
                 return None, None
             for tfmt in ["%I:%M %p", "%I:%M%p"]:
                 try:
-                    start_time = datetime.strptime(start_str, tfmt)
-                    end_time = datetime.strptime(end_str, tfmt)
-                    start_dt = base_date.replace(hour=start_time.hour, minute=start_time.minute)
-                    end_dt = base_date.replace(hour=end_time.hour, minute=end_time.minute)
-                    return start_dt, end_dt
+                    st = datetime.strptime(start_str, tfmt)
+                    et = datetime.strptime(end_str, tfmt)
+                    return base_date.replace(hour=st.hour, minute=st.minute), base_date.replace(hour=et.hour, minute=et.minute)
                 except ValueError:
                     continue
-        # Fallback: just date
         for dfmt in ["%m/%d/%Y", "%m/%d/%y"]:
             try:
                 return datetime.strptime(date_text.strip()[:10], dfmt), None
@@ -1930,7 +1925,6 @@ async def import_showingtime(
         ).first() is not None
 
     if "Listing Activity Report" in first_page_text:
-        # ─── FORMAT: Per-Property Listing Activity Report ────────────────
         listing_id_match = re.search(r'Listing ID:\s*(\d+)', first_page_text)
         if not listing_id_match:
             pdf.close()
@@ -1945,39 +1939,54 @@ async def import_showingtime(
             results["details"].append(f"No property matches MLS #{listing_id}")
             return {**results, "message": f"No property found for MLS #{listing_id}"}
 
-        # Find the Listing Activity Details table
         for page in pdf.pages:
             tables = page.extract_tables({"text_x_tolerance": 3, "text_y_tolerance": 3})
             for table in tables:
-                if len(table) < 3:
-                    continue
-                is_activity_table = False
-                for row in table[:2]:
-                    row_text = ' '.join([str(c) if c else '' for c in row]).lower()
-                    if 'activity type' in row_text and 'activity date' in row_text:
-                        is_activity_table = True
-                        break
-                if not is_activity_table:
+                if len(table) < 2:
                     continue
 
-                for row in table[2:]:
+                # Find the header row dynamically
+                header_row_idx = None
+                col_map = {}
+                for ri, row in enumerate(table):
+                    row_text = ' '.join([str(c).lower() if c else '' for c in row])
+                    if 'activity type' in row_text and ('activity date' in row_text or 'date' in row_text):
+                        # Map columns dynamically
+                        for ci, cell in enumerate(row):
+                            cell_lower = str(cell).lower().strip() if cell else ''
+                            if 'type' in cell_lower and 'col_type' not in col_map:
+                                col_map['type'] = ci
+                            elif 'date' in cell_lower and 'col_date' not in col_map:
+                                col_map['date'] = ci
+                            elif 'agent' in cell_lower and 'col_agent' not in col_map:
+                                col_map['agent'] = ci
+                            elif 'note' in cell_lower:
+                                col_map['notes'] = ci
+                            elif 'feedback' in cell_lower:
+                                col_map['feedback'] = ci
+                        header_row_idx = ri
+                        break
+
+                if header_row_idx is None:
+                    continue
+
+                # Process data rows after header
+                for row in table[header_row_idx + 1:]:
                     try:
                         cells = [str(c).strip() if c else '' for c in row]
-                        if len(cells) < 4:
-                            continue
 
-                        activity_type_raw = cells[0] or ''
-                        date_cell = cells[2] if len(cells) > 2 else ''
-                        agent_cell = cells[3] if len(cells) > 3 else ''
-                        notes = cells[4] if len(cells) > 4 else ''
-                        feedback_cell = cells[5] if len(cells) > 5 else ''
+                        act_type_raw = cells[col_map.get('type', 0)] if col_map.get('type', 0) < len(cells) else ''
+                        date_cell = cells[col_map.get('date', 1)] if col_map.get('date', 1) < len(cells) else ''
+                        agent_cell = cells[col_map.get('agent', 2)] if col_map.get('agent', 2) < len(cells) else ''
+                        notes = cells[col_map.get('notes', 3)] if col_map.get('notes', 3) < len(cells) else ''
+                        feedback_cell = cells[col_map.get('feedback', 4)] if col_map.get('feedback', 4) < len(cells) else ''
 
                         if not date_cell or date_cell == 'None':
                             continue
-                        if 'new listing' in activity_type_raw.lower():
-                            continue
 
-                        type_lower = activity_type_raw.lower()
+                        type_lower = act_type_raw.lower()
+                        if 'new listing' in type_lower or 'price change' in type_lower:
+                            continue
                         if 'cancel' in type_lower or 'declined' in type_lower:
                             results["skipped_cancelled"] += 1
                             continue
@@ -1988,7 +1997,6 @@ async def import_showingtime(
                         if not start_dt:
                             continue
 
-                        # Extract brokerage (line 2 of agent cell)
                         brokerage = None
                         if agent_cell:
                             agent_lines = [l.strip() for l in agent_cell.split('\n') if l.strip()]
@@ -2027,7 +2035,7 @@ async def import_showingtime(
                         continue
 
     else:
-        # ─── FORMAT: Weekly Showings Report ──────────────────────────────
+        # Weekly Showings Report format
         all_rows = []
         for page in pdf.pages:
             tables = page.extract_tables()
