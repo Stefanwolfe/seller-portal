@@ -1746,15 +1746,17 @@ export default function AdminPropertyDetail() {
                               </div>
                               <button
                                 onClick={async () => { await api.toggleMilestonePush(m.id); loadData() }}
-                                title={m.is_pushed ? 'Visible to client' : 'Hidden from client'}
+                                title={m.is_pushed ? 'Visible to client — click to hide' : 'Hidden from client — click to push'}
                                 style={{
-                                  background: 'none', border: 'none', cursor: 'pointer', padding: '2px 6px',
-                                  fontSize: '0.68rem', fontWeight: 600, borderRadius: 4, flexShrink: 0,
-                                  color: m.is_pushed ? '#4A7C59' : 'var(--admin-text-muted)',
+                                  border: '1px solid',
+                                  borderColor: m.is_pushed ? '#4A7C59' : 'var(--admin-border)',
                                   background: m.is_pushed ? 'rgba(74,124,89,0.08)' : 'transparent',
+                                  color: m.is_pushed ? '#4A7C59' : 'var(--admin-text-muted)',
+                                  cursor: 'pointer', padding: '3px 10px', borderRadius: 4, flexShrink: 0,
+                                  fontSize: '0.7rem', fontWeight: 600, letterSpacing: '0.02em',
                                 }}
                               >
-                                {m.is_pushed ? '✓' : '○'}
+                                {m.is_pushed ? '✓ Pushed' : 'Push'}
                               </button>
                               <select
                                 value={m.status}
@@ -1881,17 +1883,7 @@ export default function AdminPropertyDetail() {
               <div className="admin-card" style={{ marginTop: '1rem' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
                   <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem' }}>Transaction Engine</h3>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-                    {tcData?.tc_engine && (
-                      <button
-                        className={`btn btn--small ${tcData.show_tc_engine ? 'btn--success' : 'btn--ghost'}`}
-                        onClick={handleToggleTCEngine}
-                        style={tcData.show_tc_engine ? { background: '#4A7C59', borderColor: '#4A7C59', color: 'white' } : {}}
-                      >
-                        {tcData.show_tc_engine ? '✓ Visible to Client' : 'Push to Client'}
-                      </button>
-                    )}
-                  </div>
+                  <span style={{ fontSize: '0.72rem', color: 'var(--admin-text-muted)', fontStyle: 'italic' }}>Reference only — push individual items from the Milestone Checklist above</span>
                 </div>
 
                 {tcLoading && (
