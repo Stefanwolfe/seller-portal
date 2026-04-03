@@ -1,5 +1,5 @@
 import React from 'react'
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route, Navigate, useParams } from 'react-router-dom'
 import { useAuth } from './utils/AuthContext'
 
 // Pages
@@ -12,6 +12,11 @@ import AdminProperties from './pages/AdminProperties'
 import AdminPropertyDetail from './pages/AdminPropertyDetail'
 import AdminActivities from './pages/AdminActivities'
 import AdminClients from './pages/AdminClients'
+
+function AdminPreview() {
+  const { id } = useParams()
+  return <ClientDashboard previewPropertyId={parseInt(id)} />
+}
 
 function ProtectedRoute({ children, requiredRole }) {
   const { user, loading } = useAuth()
@@ -87,6 +92,11 @@ export default function App() {
       <Route path="/admin/clients" element={
         <ProtectedRoute requiredRole="admin">
           <AdminClients />
+        </ProtectedRoute>
+      } />
+      <Route path="/admin/preview/:id" element={
+        <ProtectedRoute requiredRole="admin">
+          <AdminPreview />
         </ProtectedRoute>
       } />
 

@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef, useCallback } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { AdminNav } from './AdminDashboard'
 import api from '../utils/api'
-import { Upload, Trash2, Plus, Check, Send, X, ArrowLeft, Edit3, Image, Calendar, Megaphone, Users, Archive, RotateCcw, ListChecks, Flag, FileText, Receipt, Clock, ChevronDown, Paperclip } from 'lucide-react'
+import { Upload, Trash2, Plus, Check, Send, X, ArrowLeft, Edit3, Image, Calendar, Megaphone, Users, Archive, RotateCcw, ListChecks, Flag, FileText, Receipt, Clock, ChevronDown, Paperclip, Eye } from 'lucide-react'
 
 export default function AdminPropertyDetail() {
   const { id } = useParams()
@@ -24,6 +24,12 @@ export default function AdminPropertyDetail() {
   // Marketing form
   const [showMarketingForm, setShowMarketingForm] = useState(false)
   const [mktForm, setMktForm] = useState({ item_type: 'professional_photos', title: '', description: '', url: '', completed_date: '' })
+  const [editingMkt, setEditingMkt] = useState(null)
+
+  // Invite
+  const [showInviteForm, setShowInviteForm] = useState(false)
+  const [inviteForm, setInviteForm] = useState({ email: '', full_name: '' })
+  const [inviteResult, setInviteResult] = useState(null)
 
   // CSV import
   const csvRef = useRef()
@@ -562,6 +568,9 @@ export default function AdminPropertyDetail() {
               </>
             ) : (
               <>
+                <button className="btn btn--ghost btn--small" onClick={() => window.open(`/admin/preview/${id}`, '_blank')}>
+                  <Eye size={14} /> Client Preview
+                </button>
                 <button className="btn btn--ghost btn--small" onClick={startEditProperty}>
                   <Edit3 size={14} /> Edit Details
                 </button>
@@ -984,11 +993,23 @@ export default function AdminPropertyDetail() {
         {/* ─── Marketing Tab ──────────────────────────────────────────────── */}
         {tab === 'marketing' && (
           <>
-            <button className="btn btn--primary" style={{ marginBottom: '1rem' }} onClick={() => setShowMarketingForm(true)}><Plus size={14} /> Add Marketing Item</button>
+            <button className="btn btn--primary" style={{ marginBottom: '1rem' }} onClick={() => { setMktForm({ item_type: 'professional_photos', title: '', description: '', url: '', completed_date: '' }); setEditingMkt(null); setShowMarketingForm(true) }}><Plus size={14} /> Add Marketing Item</button>
 
             {showMarketingForm && (
               <div className="admin-card" style={{ marginBottom: '1rem', borderColor: 'var(--admin-gold)' }}>
-                <form onSubmit={handleCreateMarketing}>
+                <form onSubmit={async (e) => {
+                  e.preventDefault()
+                  const data = { ...mktForm, property_id: parseInt(id) }
+                  Object.keys(data).forEach(k => { if (data[k] === '') data[k] = null })
+                  if (editingMkt) {
+                    await api.updateMarketing(editingMkt.id, data)
+                  } else {
+                    await api.createMarketing(data)
+                  }
+                  setShowMarketingForm(false)
+                  setEditingMkt(null)
+                  loadData()
+                }}>
                   <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem', marginBottom: '0.75rem' }}>
                     <div className="form-group" style={{ margin: 0 }}>
                       <label className="form-label">Type</label>
@@ -1007,7 +1028,7 @@ export default function AdminPropertyDetail() {
                     </div>
                     <div className="form-group" style={{ margin: 0 }}>
                       <label className="form-label">Date</label>
-                      <input className="form-input" type="date" value={mktForm.completed_date} onChange={e => setMktForm({...mktForm, completed_date: e.target.value})} />
+                      <input className="form-input" type="date" value={mktForm.completed_date || ''} onChange={e => setMktForm({...mktForm, completed_date: e.target.value})} />
                     </div>
                   </div>
                   <div className="form-group" style={{ marginBottom: '0.75rem' }}>
@@ -1023,8 +1044,8 @@ export default function AdminPropertyDetail() {
                     <input className="form-input" value={mktForm.url} onChange={e => setMktForm({...mktForm, url: e.target.value})} placeholder="https://..." />
                   </div>
                   <div style={{ display: 'flex', gap: '0.5rem' }}>
-                    <button type="submit" className="btn btn--primary btn--small">Create</button>
-                    <button type="button" className="btn btn--ghost btn--small" onClick={() => setShowMarketingForm(false)}>Cancel</button>
+                    <button type="submit" className="btn btn--primary btn--small">{editingMkt ? 'Save Changes' : 'Create'}</button>
+                    <button type="button" className="btn btn--ghost btn--small" onClick={() => { setShowMarketingForm(false); setEditingMkt(null) }}>Cancel</button>
                   </div>
                 </form>
               </div>
@@ -1043,15 +1064,28 @@ export default function AdminPropertyDetail() {
                 </thead>
                 <tbody>
                   {marketing.map(m => (
-                    <tr key={m.id}>
+                    <tr key={m.id} style={{ cursor: 'pointer' }} onClick={() => {
+                      setEditingMkt(m)
+                      setMktForm({
+                        item_type: m.item_type || 'other',
+                        title: m.title || '',
+                        description: m.description || '',
+                        url: m.url || '',
+                        completed_date: m.completed_date || '',
+                      })
+                      setShowMarketingForm(true)
+                    }}>
                       <td>{m.item_type?.replace(/_/g, ' ')}</td>
-                      <td>{m.title}</td>
+                      <td style={{ color: 'var(--admin-gold)' }}>{m.title}</td>
                       <td style={{ fontFamily: 'JetBrains Mono', fontSize: '0.82rem' }}>{m.completed_date ? new Date(m.completed_date).toLocaleDateString() : '—'}</td>
                       <td>{m.is_pushed ? <span className="badge badge--pushed">Pushed</span> : <span className="badge badge--pending">Draft</span>}</td>
                       <td>
-                        {!m.is_pushed && (
-                          <button className="btn btn--primary btn--small" onClick={() => handlePushMarketing(m.id)}><Send size={12} /> Push</button>
-                        )}
+                        <div style={{ display: 'flex', gap: 4 }} onClick={e => e.stopPropagation()}>
+                          {!m.is_pushed && (
+                            <button className="btn btn--primary btn--small" onClick={() => handlePushMarketing(m.id)}><Send size={12} /> Push</button>
+                          )}
+                          <button className="btn btn--danger btn--small" onClick={async () => { if (confirm('Delete this marketing item?')) { await api.deleteMarketing(m.id); loadData() } }}><Trash2 size={12} /></button>
+                        </div>
                       </td>
                     </tr>
                   ))}
@@ -1109,6 +1143,64 @@ export default function AdminPropertyDetail() {
                   </table>
                 )
               })()}
+            </div>
+
+            {/* Invite New Client */}
+            <div className="admin-card" style={{ marginTop: '1rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '0.75rem' }}>
+                <h3 style={{ fontFamily: 'Playfair Display', fontSize: '1rem' }}>Invite New Client</h3>
+                {!showInviteForm && (
+                  <button className="btn btn--ghost btn--small" onClick={() => setShowInviteForm(true)}><Plus size={12} /> Send Invite</button>
+                )}
+              </div>
+              <p style={{ fontSize: '0.8rem', color: 'var(--admin-text-muted)', marginBottom: '0.75rem' }}>
+                Send an email invitation so a new client can create their account and access this property.
+              </p>
+
+              {showInviteForm && (
+                <form onSubmit={async (e) => {
+                  e.preventDefault()
+                  setInviteResult(null)
+                  try {
+                    const result = await api.sendInvite({
+                      email: inviteForm.email.trim(),
+                      full_name: inviteForm.full_name.trim(),
+                      property_id: parseInt(id)
+                    })
+                    setInviteResult({ type: 'success', message: result.message, invite_url: result.invite_url })
+                    setInviteForm({ email: '', full_name: '' })
+                    setShowInviteForm(false)
+                    loadData()
+                  } catch (err) {
+                    setInviteResult({ type: 'error', message: err.message })
+                  }
+                }} style={{ background: 'var(--admin-bg)', borderRadius: 8, padding: '12px', marginBottom: '0.75rem', border: '1px solid var(--admin-gold-dim)' }}>
+                  <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.5rem', marginBottom: '0.5rem' }}>
+                    <input className="form-input" value={inviteForm.full_name} onChange={e => setInviteForm({...inviteForm, full_name: e.target.value})} required placeholder="Client's full name" style={{ fontSize: '0.85rem' }} />
+                    <input className="form-input" type="email" value={inviteForm.email} onChange={e => setInviteForm({...inviteForm, email: e.target.value})} required placeholder="Client's email" style={{ fontSize: '0.85rem' }} />
+                  </div>
+                  <div style={{ display: 'flex', gap: '0.5rem' }}>
+                    <button type="submit" className="btn btn--primary btn--small"><Send size={12} /> Send Invite</button>
+                    <button type="button" className="btn btn--ghost btn--small" onClick={() => setShowInviteForm(false)}>Cancel</button>
+                  </div>
+                </form>
+              )}
+
+              {inviteResult && (
+                <div style={{
+                  padding: '10px 12px', borderRadius: 6, marginTop: '0.5rem', fontSize: '0.82rem',
+                  background: inviteResult.type === 'success' ? 'rgba(74,124,89,0.06)' : 'rgba(211,47,47,0.06)',
+                  border: `1px solid ${inviteResult.type === 'success' ? 'rgba(74,124,89,0.15)' : 'rgba(211,47,47,0.15)'}`,
+                  color: inviteResult.type === 'success' ? '#4A7C59' : '#d32f2f'
+                }}>
+                  {inviteResult.message}
+                  {inviteResult.invite_url && (
+                    <div style={{ marginTop: 6, fontSize: '0.78rem', wordBreak: 'break-all', color: 'var(--admin-text-secondary)' }}>
+                      Invite link: <a href={inviteResult.invite_url} target="_blank" style={{ color: 'var(--admin-gold)' }}>{inviteResult.invite_url}</a>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </>
         )}

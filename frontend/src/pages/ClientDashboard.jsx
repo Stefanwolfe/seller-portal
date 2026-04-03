@@ -452,11 +452,12 @@ function CalendarView({ activities, onActivityClick }) {
   )
 }
 
-export default function ClientDashboard() {
+export default function ClientDashboard({ previewPropertyId = null }) {
   const { user, logout, refreshUser } = useAuth()
+  const isPreview = !!previewPropertyId
   const [data, setData] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [selectedProperty, setSelectedProperty] = useState(null)
+  const [selectedProperty, setSelectedProperty] = useState(previewPropertyId)
   const [breakdownPeriod, setBreakdownPeriod] = useState('this_week')
   const [trendPeriod, setTrendPeriod] = useState('month')
   const [lightboxIdx, setLightboxIdx] = useState(null)
@@ -464,7 +465,7 @@ export default function ClientDashboard() {
   const [selectedAct, setSelectedAct] = useState(null)
 
   // Get properties from user object
-  const properties = user?.properties || []
+  const properties = isPreview ? [{ id: previewPropertyId, address: 'Preview' }] : (user?.properties || [])
 
   useEffect(() => {
     if (properties.length > 0 && !selectedProperty) {
@@ -496,7 +497,7 @@ export default function ClientDashboard() {
 
   const totalVisitors = donutData.reduce((sum, d) => sum + d.value, 0)
 
-  if (!properties.length) {
+  if (!properties.length && !isPreview) {
     return (
       <div className="client-portal">
         <ClientNav user={user} onLogout={logout} />
@@ -515,13 +516,25 @@ export default function ClientDashboard() {
 
   return (
     <div className="client-portal">
-      <ClientNav
-        user={user}
-        properties={properties}
-        selectedProperty={selectedProperty}
-        onPropertyChange={setSelectedProperty}
-        onLogout={logout}
-      />
+      {isPreview && (
+        <div style={{
+          background: '#1E1E1E', color: '#C8A97E', padding: '8px 20px',
+          display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+          fontSize: '0.82rem', fontWeight: 500, fontFamily: 'Outfit, sans-serif'
+        }}>
+          <span><Eye size={14} style={{ verticalAlign: 'middle', marginRight: 6 }} />CLIENT PREVIEW MODE — This is what your client sees</span>
+          <button onClick={() => window.close()} style={{ background: '#C8A97E', color: '#1E1E1E', border: 'none', padding: '4px 14px', borderRadius: 4, fontSize: '0.78rem', fontWeight: 600, cursor: 'pointer' }}>Close Preview</button>
+        </div>
+      )}
+      {!isPreview && (
+        <ClientNav
+          user={user}
+          properties={properties}
+          selectedProperty={selectedProperty}
+          onPropertyChange={setSelectedProperty}
+          onLogout={logout}
+        />
+      )}
 
       <div className="client-page">
         {loading || !data ? (

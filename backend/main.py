@@ -2413,6 +2413,27 @@ async def push_marketing(item_id: int, admin: User = Depends(require_admin), db:
     return {"message": "Marketing item pushed to client"}
 
 
+@app.put("/api/marketing/{item_id}")
+async def update_marketing(item_id: int, item: MarketingItemCreate, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    m = db.query(MarketingItem).filter(MarketingItem.id == item_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Marketing item not found")
+    for key, value in item.model_dump(exclude_unset=True).items():
+        setattr(m, key, value)
+    db.commit()
+    return {"message": "Marketing item updated"}
+
+
+@app.delete("/api/marketing/{item_id}")
+async def delete_marketing(item_id: int, admin: User = Depends(require_admin), db: Session = Depends(get_db)):
+    m = db.query(MarketingItem).filter(MarketingItem.id == item_id).first()
+    if not m:
+        raise HTTPException(status_code=404, detail="Marketing item not found")
+    db.delete(m)
+    db.commit()
+    return {"message": "Marketing item deleted"}
+
+
 # ─── Client Access Management ────────────────────────────────────────────────
 
 @app.post("/api/property-access")

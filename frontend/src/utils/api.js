@@ -213,6 +213,18 @@ class ApiClient {
     return this.request(`/marketing/${id}/push`, { method: 'PUT' });
   }
 
+  updateMarketing(id, data) {
+    return this.request(`/marketing/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+  }
+
+  deleteMarketing(id) {
+    return this.request(`/marketing/${id}`, { method: 'DELETE' });
+  }
+
   // Dashboard
   getDashboard(propertyId) {
     return this.request(`/dashboard/${propertyId}`);
